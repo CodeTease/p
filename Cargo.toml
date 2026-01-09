@@ -1,0 +1,27 @@
+[package]
+name = "pavidi"
+version = "0.1.0"
+edition = "2024" # This thing IS real
+
+[dependencies]
+# CLI Argument Parser (v4 still good)
+clap = { version = "4.5", features = ["derive"] }
+
+# Serialization/Deserialization
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.9"
+
+# Error Handling
+anyhow = "1.0"
+
+# Terminal Colors
+colored = "3.0"
+
+# Command Line Parsing (safe splitting)
+shell-words = "1.1"
+
+# Glob pattern matching
+glob = "0.3"
+
+# Rayon
+rayon = "1.11"
