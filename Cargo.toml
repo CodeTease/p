@@ -1,7 +1,7 @@
 [package]
 name = "pavidi"
 version = "0.1.0"
-edition = "2024" # This thing IS real
+edition = "2024" 
 
 [dependencies]
 # CLI Argument Parser (v4 still good)
@@ -25,3 +25,6 @@ glob = "0.3"
 
 # Rayon
 rayon = "1.11"
+
+# Env file loading (Robust & Standard)
+dotenvy = "0.15"

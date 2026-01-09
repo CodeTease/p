@@ -98,7 +98,31 @@ fn load_config(dir: &Path) -> Result<PavidiConfig> {
         bail!("❌ Critical: '.p.toml' not found in {:?}.", dir);
     }
     let content = fs::read_to_string(&config_path).context("Failed to read .p.toml")?;
-    toml::from_str(&content).context("Failed to parse .p.toml")
+    
+    // 1. Parse .p.toml (Base Layer)
+    let mut config: PavidiConfig = toml::from_str(&content).context("Failed to parse .p.toml")?;
+
+    // 2. Load .env using dotenvy (Override Layer)
+    // Determines filename: .env or .env.prod based on P_ENV
+    let env_filename = env::var("P_ENV")
+        .map(|v| format!(".env.{}", v))
+        .unwrap_or_else(|_| ".env".to_string());
+    
+    let env_path = dir.join(&env_filename);
+
+    if env_path.exists() {
+        eprintln!("{} Loading environment from: {}", "🌿".green(), env_filename.bold());
+        
+        // We use from_path_iter to get the vars as a Map, NOT setting them globally yet.
+        // This keeps the separation clean until execution.
+        for item in dotenvy::from_path_iter(&env_path)? {
+            let (key, val) = item?;
+            // .env overrides .p.toml
+            config.env.insert(key, val);
+        }
+    }
+
+    Ok(config)
 }
 
 fn handle_dir_jump(target_path: PathBuf) -> Result<()> {
@@ -106,8 +130,9 @@ fn handle_dir_jump(target_path: PathBuf) -> Result<()> {
         bail!("Target directory does not exist: {:?}", target_path);
     }
 
-    let config = load_config(&target_path)?;
     let abs_path = fs::canonicalize(&target_path)?;
+    // Now config includes merged envs from .p.toml and .env
+    let config = load_config(&abs_path)?;
 
     // Detect shell preference or fallback to system default
     let shell_cmd = config.project
@@ -122,7 +147,7 @@ fn handle_dir_jump(target_path: PathBuf) -> Result<()> {
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .envs(&config.env);
+        .envs(&config.env); // Inject merged envs
 
     let status = command.status()
         .context(format!("Failed to spawn shell: {}", shell_cmd))?;
@@ -144,7 +169,7 @@ fn handle_dir_jump(target_path: PathBuf) -> Result<()> {
 
 fn handle_runner_entry(task_name: String, extra_args: Vec<String>) -> Result<()> {
     let current_dir = env::current_dir()?;
-    let config = load_config(&current_dir)?;
+    let config = load_config(&current_dir)?; 
     
     let runner_section = config.runner.as_ref().context("No [runner] section defined in config")?;
     if !runner_section.contains_key(&task_name) {
@@ -181,8 +206,6 @@ fn recursive_runner(
     };
 
     // 1. Run Dependencies
-    // Note: Dependencies run BEFORE checking "up-to-date" for the current task,
-    // because dependencies might update the source files of the current task.
     if !deps.is_empty() {
         if parallel_deps {
             if !capture_output {
@@ -210,7 +233,6 @@ fn recursive_runner(
                 println!("{} Running dependencies sequentially...", "🔗".blue());
             }
             for dep in deps {
-                // Sequential deps inherit capture mode
                 recursive_runner(&dep, config, call_stack, &[], capture_output)?;
             }
         }
@@ -285,12 +307,10 @@ fn is_up_to_date(sources: &[String], outputs: &[String]) -> Result<bool> {
         }
     }
 
-    // If source or output files are missing, we cannot skip.
     if !has_src || !has_out {
         return Ok(false);
     }
 
-    // If latest source is OLDER than oldest output -> Up to date
     Ok(latest_src < oldest_out)
 }
 
@@ -335,17 +355,15 @@ fn run_shell_command(
     let mut command = Command::new(shell);
     command.arg(flag)
            .arg(cmd_str)
-           .envs(env_vars)
-           .stdin(Stdio::inherit()); // Inherit stdin allows user interaction (unless deeply parallel)
+           .envs(env_vars) // Use merged envs
+           .stdin(Stdio::inherit()); 
 
     if capture {
-        // Parallel/Quiet Mode: Capture stdout/stderr
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
 
         let output = command.output().context("Failed to spawn shell process (captured)")?;
 
-        // Atomic Print: Print everything at once when done
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -360,7 +378,6 @@ fn run_shell_command(
             bail!("Exit code: {:?}", output.status.code());
         }
     } else {
-        // Interactive Mode: Direct output stream
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
 

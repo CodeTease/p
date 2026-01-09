@@ -3,3 +3,4 @@
 *.vegh
 .veghcache
 .p.toml
+.cargo
