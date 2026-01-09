@@ -3,6 +3,7 @@ use colored::*;
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::env;
+use log::{info, debug, error};
 
 /// Replaces $1, $2... with corresponding args.
 /// Fallback: If no placeholders found, append args to the end.
@@ -67,10 +68,10 @@ pub fn run_shell_command(
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         if !stdout.trim().is_empty() {
-            println!("[{}] {}", task_label.cyan(), stdout.trim());
+            info!("[{}] {}", task_label.cyan(), stdout.trim());
         }
         if !stderr.trim().is_empty() {
-            eprintln!("[{}] {}", task_label.red(), stderr.trim());
+            error!("[{}] {}", task_label.red(), stderr.trim());
         }
 
         if !output.status.success() {
@@ -90,8 +91,28 @@ pub fn run_shell_command(
 }
 
 pub fn detect_shell(config_shell: Option<&String>) -> String {
-    config_shell
-        .cloned()
-        .or_else(|| env::var("SHELL").ok())
-        .unwrap_or_else(|| if cfg!(windows) { "cmd".to_string() } else { "sh".to_string() })
+    if let Some(s) = config_shell {
+        return s.clone();
+    }
+    
+    if let Ok(s) = env::var("SHELL") {
+        return s;
+    }
+
+    if cfg!(windows) {
+        // Prioritize pwsh if available (using a simple check which is actually running it or just assuming)
+        // Since we cannot easily "check" existence without running, we can check ENV or just default if desired.
+        // For this task, we will check if "pwsh" is in PATH by attempting to invoke it or checking env vars? 
+        // A simpler approach for this task is to prioritize it if the user hasn't specified otherwise.
+        // However, standard practice is to fallback to cmd if not sure.
+        // The requirement says: "If Windows: ... check priority if pwsh is available".
+        // We can check if `pwsh` command exists.
+        if which::which("pwsh").is_ok() {
+            "pwsh".to_string()
+        } else {
+            "cmd".to_string()
+        }
+    } else {
+        "sh".to_string()
+    }
 }

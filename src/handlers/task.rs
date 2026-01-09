@@ -3,7 +3,7 @@ use std::env;
 use crate::config::load_config;
 use crate::runner::{recursive_runner, CallStack};
 
-pub fn handle_runner_entry(task_name: String, extra_args: Vec<String>) -> Result<()> {
+pub fn handle_runner_entry(task_name: String, extra_args: Vec<String>, dry_run: bool) -> Result<()> {
     let current_dir = env::current_dir()?;
     let config = load_config(&current_dir)?; 
     
@@ -15,5 +15,5 @@ pub fn handle_runner_entry(task_name: String, extra_args: Vec<String>) -> Result
     let mut call_stack = CallStack::new();
     
     // Root task is allowed to print directly to stdout/stderr (capture = false)
-    recursive_runner(&task_name, &config, &mut call_stack, &extra_args, false)
+    recursive_runner(&task_name, &config, &mut call_stack, &extra_args, false, dry_run)
 }

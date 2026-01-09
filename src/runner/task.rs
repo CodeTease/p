@@ -15,6 +15,9 @@ pub enum RunnerTask {
         deps: Vec<String>,
         #[serde(default)]
         parallel: bool,
+        // Description for listing
+        #[serde(default)]
+        description: Option<String>,
         // Conditional Execution
         sources: Option<Vec<String>>,
         outputs: Option<Vec<String>>,

@@ -13,9 +13,19 @@ pub enum Commands {
     /// Enter a project's shell environment (Sub-shell session)
     D { path: PathBuf },
     
+    /// List all available tasks
+    #[command(visible_alias = "ls")]
+    List,
+
     /// Run a task defined in .p.toml
     R { 
+        #[arg(default_value = "default")]
         task: String,
+        
+        /// Run in dry-run mode (print commands without executing)
+        #[arg(short = 'd', long = "dry-run")]
+        dry_run: bool,
+
         #[arg(last = true)]
         args: Vec<String>,
     },
