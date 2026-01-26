@@ -1,6 +1,8 @@
 pub mod task;
 pub mod cache;
 pub mod portable;
+pub mod handler;
+pub mod common;
 
 use anyhow::{Result, bail};
 use colored::*;
