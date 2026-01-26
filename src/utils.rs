@@ -3,34 +3,48 @@ use colored::*;
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::env;
-use log::{info, debug, error};
+use log::{info, error};
 use wait_timeout::ChildExt;
 use std::time::Duration;
 use std::io::Read;
+use regex::Regex;
 
 /// Replaces $1, $2... with corresponding args.
-/// Fallback: If no placeholders found, append args to the end.
-pub fn expand_command(cmd_template: &str, args: &[String]) -> String {
-    if args.is_empty() {
-        return cmd_template.to_string();
-    }
-
+/// Then replaces ${VAR} or $VAR with values from env_vars.
+/// Fallback for args: If no placeholders found, append args to the end.
+pub fn expand_command(cmd_template: &str, args: &[String], env_vars: &HashMap<String, String>) -> String {
     let mut expanded = cmd_template.to_string();
-    let mut replaced = false;
+    
+    // 1. Argument Substitution ($1, $2...)
+    if !args.is_empty() {
+        let mut replaced_args = false;
+        for (i, arg) in args.iter().enumerate() {
+            let placeholder = format!("${}", i + 1);
+            if expanded.contains(&placeholder) {
+                expanded = expanded.replace(&placeholder, arg);
+                replaced_args = true;
+            }
+        }
 
-    for (i, arg) in args.iter().enumerate() {
-        let placeholder = format!("${}", i + 1);
-        if expanded.contains(&placeholder) {
-            expanded = expanded.replace(&placeholder, arg);
-            replaced = true;
+        // Backward Compatibility: Append if no placeholders used
+        if !replaced_args {
+            expanded.push_str(" ");
+            expanded.push_str(&args.join(" "));
         }
     }
 
-    // Backward Compatibility: Append if no placeholders used
-    if !replaced {
-        expanded.push_str(" ");
-        expanded.push_str(&args.join(" "));
-    }
+    // 2. Env Var Interpolation (${VAR} or $VAR)
+    // Matches ${VAR} or $VAR (variable name must start with letter/underscore)
+    // This avoids matching $1, $2 which are handled above (and usually don't match [a-zA-Z_])
+    let re = Regex::new(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}|\$([a-zA-Z_][a-zA-Z0-9_]*)").unwrap();
+    
+    expanded = re.replace_all(&expanded, |caps: &regex::Captures| {
+        let key = caps.get(1).or_else(|| caps.get(2)).map(|m| m.as_str()).unwrap_or("");
+        match env_vars.get(key) {
+            Some(val) => val.to_string(),
+            None => caps.get(0).unwrap().as_str().to_string(), // Keep original if not found
+        }
+    }).to_string();
     
     expanded
 }

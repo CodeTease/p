@@ -1,5 +1,6 @@
 pub mod task;
 pub mod cache;
+pub mod portable;
 
 use anyhow::{Result, bail};
 use colored::*;
@@ -9,8 +10,9 @@ use rayon::prelude::*;
 use crate::config::PavidiConfig;
 use crate::utils::{detect_shell, expand_command, run_shell_command};
 use self::task::RunnerTask;
-use self::cache::is_up_to_date;
-use log::{info, error, debug};
+use self::cache::{is_up_to_date, save_cache};
+use self::portable::run_portable_command;
+use log::{info, error};
 
 pub struct CallStack {
     stack: HashSet<String>,
@@ -100,11 +102,8 @@ pub fn recursive_runner(
     }
 
     // 2. Check Conditional Execution (Cache Check)
-    if let (Some(srcs), Some(outs)) = (sources, outputs) {
-        // We only check cache if NOT in dry-run, OR we can check it but should we skip?
-        // Usually dry-run should show what WOULD happen. If it's cached, it wouldn't run.
-        // So checking cache is correct even in dry-run.
-        if is_up_to_date(&srcs, &outs)? {
+    if let (Some(srcs), Some(outs)) = (&sources, &outputs) {
+        if is_up_to_date(task_name, srcs, outs)? {
             if !capture_output {
                 info!("{} Task '{}' is up-to-date. Skipping.", "✨".green(), task_name.bold());
             }
@@ -148,8 +147,8 @@ pub fn recursive_runner(
         };
 
         for cmd in &mut cmds {
-            // Apply Argument Expansion ($1, $2...)
-            let final_cmd = expand_command(cmd, extra_args);
+            // Apply Argument Expansion ($1, $2...) and Env Var Interpolation
+            let final_cmd = expand_command(cmd, extra_args, &config.env);
 
             if dry_run {
                 println!("{} [DRY-RUN] Executing: {}", "::".yellow(), final_cmd);
@@ -160,13 +159,25 @@ pub fn recursive_runner(
                 info!("{} Executing: {}", "::".blue(), final_cmd);
             }
 
-            if let Err(e) = run_shell_command(&final_cmd, &config.env, capture_output, task_name, &shell_cmd, timeout_duration) {
+            // Check for portable commands
+            let result = if final_cmd.trim_start().starts_with("p:") {
+                run_portable_command(&final_cmd)
+            } else {
+                run_shell_command(&final_cmd, &config.env, capture_output, task_name, &shell_cmd, timeout_duration)
+            };
+
+            if let Err(e) = result {
                 if ignore_failure {
                      log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
                      continue;
                 }
                 bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
             }
+        }
+
+        // Success: Update cache if sources AND outputs defined (otherwise we never check it anyway)
+        if let (Some(srcs), Some(_)) = (&sources, &outputs) {
+             save_cache(task_name, srcs)?;
         }
     }
     

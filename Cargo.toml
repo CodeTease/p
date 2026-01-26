@@ -34,3 +34,9 @@ log = "0.4"
 env_logger = "0.11"
 which = "8.0.0"
 wait-timeout = "0.2.1"
+
+# Hashing for Smart Cache
+blake3 = "1.5"
+
+# Regex for Env Var Interpolation
+regex = "1.10"
