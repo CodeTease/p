@@ -4,8 +4,47 @@ use std::fs;
 use std::path::{PathBuf};
 use std::process::{Command, Stdio};
 use std::env;
+use std::io::{self, Write};
 use crate::config::load_config;
 use crate::utils::detect_shell;
+use crate::pas;
+
+pub fn handle_repl() -> Result<()> {
+    // Signal handling: catch Ctrl+C to prevent shell exit
+    ctrlc::set_handler(move || {
+        print!("\n> ");
+        io::stdout().flush().ok();
+    }).context("Error setting Ctrl-C handler")?;
+
+    let mut ctx = pas::context::ShellContext::new();
+    println!("Welcome to PaShell. Type 'exit' to quit.");
+
+    loop {
+        print!("> ");
+        io::stdout().flush()?;
+        
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input)? == 0 {
+            break; // EOF
+        }
+        
+        let input = input.trim();
+        if input.is_empty() {
+            continue;
+        }
+        
+        if input == "exit" {
+            break;
+        }
+        
+        // Run
+        match pas::run_command_line(input, &mut ctx) {
+            Ok(_) => {}, // Exit code stored in ctx
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+    Ok(())
+}
 
 pub fn handle_dir_jump(target_path: PathBuf) -> Result<()> {
     if !target_path.exists() || !target_path.is_dir() {

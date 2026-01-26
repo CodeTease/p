@@ -15,12 +15,14 @@ impl ShellContext {
     pub fn new() -> Self {
         let env: HashMap<String, String> = std::env::vars().collect();
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        Self {
+        let mut ctx = Self {
             cwd,
             env,
             exit_code: 0,
             registry: Arc::new(HashMap::new()),
-        }
+        };
+        crate::pas::commands::builtins::register_all_builtins(&mut ctx);
+        ctx
     }
 
     pub fn register_command(&mut self, name: &str, command: Box<dyn Executable + Send + Sync>) {

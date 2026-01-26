@@ -16,6 +16,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::D { path } => shell::handle_dir_jump(path),
+        Commands::Shell => shell::handle_repl(),
         Commands::List => list::handle_list(),
         Commands::R { task, dry_run, args } => task::handle_runner_entry(task, args, dry_run),
         Commands::C => clean::handle_clean(),
