@@ -89,11 +89,6 @@ fn handle_sequence(
             std::io::copy(&mut reader, &mut out_sink).ok();
         });
         
-        // We clone writer for Left.
-        // Right gets ownership of 'writer' later.
-        // BUT wait, if we give 'writer' to Right, and Left is done, Left drops its writer.
-        // Pipe stays open until Right is done.
-        
         let w1 = writer.try_clone().context("Failed to clone pipe writer")?;
         let w2 = writer; 
         

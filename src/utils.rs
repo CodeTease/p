@@ -136,17 +136,12 @@ pub fn detect_shell(config_shell: Option<&String>) -> String {
     }
 
     if cfg!(windows) {
-        // Prioritize pwsh if available (using a simple check which is actually running it or just assuming)
-        // Since we cannot easily "check" existence without running, we can check ENV or just default if desired.
-        // For this task, we will check if "pwsh" is in PATH by attempting to invoke it or checking env vars? 
-        // A simpler approach for this task is to prioritize it if the user hasn't specified otherwise.
-        // However, standard practice is to fallback to cmd if not sure.
-        // The requirement says: "If Windows: ... check priority if pwsh is available".
-        // We can check if `pwsh` command exists.
-        if which::which("pwsh").is_ok() {
-            "pwsh".to_string()
+        if which::which("powershell").is_ok() {
+            "powershell".to_string() // Built-in PS 5. Always available so we prefer it
+        } else if which::which("pwsh").is_ok() {
+            "pwsh".to_string() // PS 6+ Core. Available if user installed it
         } else {
-            "cmd".to_string()
+            "cmd".to_string() // Final fallback. CMD also always available
         }
     } else {
         "sh".to_string()

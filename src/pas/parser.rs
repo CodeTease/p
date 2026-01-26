@@ -71,20 +71,8 @@ fn parse_pipe<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, Comm
 }
 
 // 3. Redirect: >, >>, <
-// Note: Redirect usually wraps a Simple command.
-// Format: cmd > file OR > file cmd (some shells allow this, but let's stick to suffix for now: cmd arg > file)
-// Actually, redirects can appear anywhere in Simple command args.
-// But the simplest model for AST is: CommandExpr::Redirect wraps a command.
-// So we parse a Simple command first, then look for redirects trailing it?
-// Or we parse a list of tokens/redirects and assemble?
-// Let's implement trailing redirects for simplicity: `cmd arg > file`.
 fn parse_redirect<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, CommandExpr> {
     let (input, cmd) = parse_simple(input, pctx)?;
-
-    // Look for redirects
-    // They are right-associative wrapping?
-    // `cmd > file` -> Redirect(cmd, file)
-    // `cmd > file >> log` -> Redirect(Redirect(cmd, file), log)
     
     fold_many0(
         pair(

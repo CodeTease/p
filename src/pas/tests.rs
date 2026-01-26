@@ -90,25 +90,9 @@ fn test_logic_and() {
 
 #[test]
 fn test_pipe_simple() {
-    // Note: cat might not be available on Windows?
-    // Use `more`? Or `findstr`? 
-    // Usually `sort` is available on both.
-    // `echo "b\na" | sort`
-    
-    // For universal test, maybe `echo hello | cat` (Unix) or `type` (Windows)?
-    // But `echo` is builtin (via system/fallback).
     
     let mut ctx = ShellContext::new();
     let out_file = ctx.cwd.join("test_pipe.txt");
-    
-    // Using a command that exists. `echo` exists.
-    // Piping echo to something.
-    // On Linux/Mac: `echo hello | rev > file`.
-    // On Windows: `echo hello | sort` works?
-    
-    // Let's rely on basic commands.
-    // If I cannot guarantee OS commands, this test might be flaky.
-    // But this is unit test on local env.
     
     if cfg!(unix) {
         let cmd = format!("echo hello | cat > {}", out_file.to_string_lossy());

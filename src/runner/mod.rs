@@ -146,7 +146,7 @@ pub fn recursive_runner(
             info!("{} Running task: {}", "⚡".yellow(), task_name.bold());
         }
 
-        // Phase 3: Optimize Core Logic - detect shell
+        // Optimize Core Logic - detect shell
         let shell_cmd = detect_shell(config.project.as_ref().and_then(|p| p.shell.as_ref()));
         
         let timeout_duration = match timeout_sec {
