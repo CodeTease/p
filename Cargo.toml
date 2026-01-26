@@ -40,3 +40,9 @@ blake3 = "1.5"
 
 # Regex for Env Var Interpolation
 regex = "1.10"
+
+# Parser Combinator
+nom = "7.1"
+
+# OS Pipes
+os_pipe = "1.1"

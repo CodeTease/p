@@ -1,138 +1,207 @@
+use nom::{
+    branch::alt,
+    bytes::complete::{is_not, tag, take_while, take_while1},
+    character::complete::{char, multispace0, multispace1, satisfy},
+    combinator::map,
+    multi::{many0, many1, fold_many0},
+    sequence::{delimited, pair, preceded},
+    IResult,
+};
+use crate::pas::ast::{CommandExpr, RedirectMode};
 use crate::pas::context::ShellContext;
-use anyhow::Result;
 use std::path::MAIN_SEPARATOR;
 
-pub fn parse_command(cmd_str: &str, ctx: &ShellContext) -> Result<Vec<String>> {
-    let mut args = Vec::new();
-    let mut current_token = String::new();
-    let mut in_single_quote = false;
-    let mut in_double_quote = false;
-    let mut escaped = false;
-    
-    // Used to track if we actually parsed something into the current token
-    // so we can distinguish between empty string (from "") vs nothing (whitespace)
-    let mut token_started = false; 
-    
-    // We need to handle the case where a token is explicitly empty e.g. ""
-    // My previous logic relied on !is_empty(), which fails for "".
-    // Let's refine the logic.
-    // If we see a quote, we mark token_started = true.
-    // If we see a char, token_started = true.
-    // If we see space and token_started, we push.
+// Helper to pass context
+struct ParserContext<'a> {
+    ctx: &'a ShellContext,
+}
 
-    let mut chars = cmd_str.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if escaped {
-            current_token.push(c);
-            escaped = false;
-            token_started = true;
-            continue;
-        }
-
-        if c == '\\' {
-            if in_single_quote {
-                current_token.push(c);
-                token_started = true;
-            } else {
-                escaped = true;
-                token_started = true; // The backslash starts the token even if next is space (escaped space)
+pub fn parse_command_line(input: &str, ctx: &ShellContext) -> anyhow::Result<CommandExpr> {
+    let pctx = ParserContext { ctx };
+    match parse_logic(input, &pctx) {
+        Ok((rem, expr)) => {
+            // Ensure we consumed everything (except maybe whitespace)
+            let (rem, _) = multispace0::<&str, nom::error::Error<&str>>(rem).unwrap_or((rem, ""));
+            if !rem.is_empty() {
+                anyhow::bail!("Unexpected input remaining: {}", rem);
             }
-            continue;
-        }
-
-        if c == '\'' {
-            if in_double_quote {
-                current_token.push(c);
-                token_started = true;
-            } else {
-                in_single_quote = !in_single_quote;
-                token_started = true; // Quote characters imply a token exists (even if empty)
-            }
-            continue;
-        }
-
-        if c == '"' {
-            if in_single_quote {
-                current_token.push(c);
-                token_started = true;
-            } else {
-                in_double_quote = !in_double_quote;
-                token_started = true;
-            }
-            continue;
-        }
-
-        if c == '$' && !in_single_quote {
-            // Expansion
-            token_started = true; 
-            
-            let mut var_name = String::new();
-            
-            if let Some(&'{') = chars.peek() {
-                chars.next(); // consume {
-                while let Some(&vc) = chars.peek() {
-                    if vc == '}' {
-                        chars.next(); // consume }
-                        break;
-                    }
-                    var_name.push(chars.next().unwrap());
-                }
-            } else {
-                // Scan alphanumeric + _ + ?
-                while let Some(&vc) = chars.peek() {
-                    if vc.is_alphanumeric() || vc == '_' || vc == '?' {
-                         var_name.push(chars.next().unwrap());
-                         // $? is special, single char
-                         if var_name == "?" { break; }
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            if var_name.is_empty() {
-                // Just a $
-                current_token.push('$');
-            } else if var_name == "?" {
-                current_token.push_str(&ctx.exit_code.to_string());
-            } else {
-                if let Some(val) = ctx.env.get(&var_name) {
-                    current_token.push_str(val);
-                }
-            }
-            continue;
-        }
-
-        if c.is_whitespace() {
-            if in_single_quote || in_double_quote {
-                current_token.push(c);
-                token_started = true;
-            } else if token_started {
-                args.push(normalize_path(current_token));
-                current_token = String::new();
-                token_started = false;
-            }
-            continue;
-        }
-
-        current_token.push(c);
-        token_started = true;
+            Ok(expr)
+        },
+        Err(e) => anyhow::bail!("Parse error: {}", e),
     }
+}
 
-    if token_started {
-        args.push(normalize_path(current_token));
-    } else if escaped {
-        // Trailing backslash? e.g. "echo \"
-        // Should push backslash? Or error?
-        // Shells usually wait for more input. Here we just push empty or backslash?
-        // Logic above: `escaped = true`. Loop ends.
-        // We probably want to push nothing or warn.
-        // If I typed `echo \`, I expect `echo`? No, `\` escapes newline usually.
-        // For Mini-Parser, let's ignore or push empty.
+// 1. Logic: &&, ||
+fn parse_logic<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, CommandExpr> {
+    let (input, init) = parse_pipe(input, pctx)?;
+
+    fold_many0(
+        pair(
+            delimited(multispace0, alt((tag("&&"), tag("||"))), multispace0),
+            |i| parse_pipe(i, pctx)
+        ),
+        move || init.clone(),
+        |acc, (op, next)| {
+            match op {
+                "&&" => CommandExpr::And(Box::new(acc), Box::new(next)),
+                "||" => CommandExpr::Or(Box::new(acc), Box::new(next)),
+                _ => unreachable!(),
+            }
+        }
+    )(input)
+}
+
+// 2. Pipe: |
+fn parse_pipe<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, CommandExpr> {
+    let (input, init) = parse_redirect(input, pctx)?;
+
+    fold_many0(
+        preceded(
+            delimited(multispace0, char('|'), multispace0),
+            |i| parse_redirect(i, pctx)
+        ),
+        move || init.clone(),
+        |acc, next| {
+            CommandExpr::Pipe {
+                left: Box::new(acc),
+                right: Box::new(next),
+            }
+        }
+    )(input)
+}
+
+// 3. Redirect: >, >>, <
+// Note: Redirect usually wraps a Simple command.
+// Format: cmd > file OR > file cmd (some shells allow this, but let's stick to suffix for now: cmd arg > file)
+// Actually, redirects can appear anywhere in Simple command args.
+// But the simplest model for AST is: CommandExpr::Redirect wraps a command.
+// So we parse a Simple command first, then look for redirects trailing it?
+// Or we parse a list of tokens/redirects and assemble?
+// Let's implement trailing redirects for simplicity: `cmd arg > file`.
+fn parse_redirect<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, CommandExpr> {
+    let (input, cmd) = parse_simple(input, pctx)?;
+
+    // Look for redirects
+    // They are right-associative wrapping?
+    // `cmd > file` -> Redirect(cmd, file)
+    // `cmd > file >> log` -> Redirect(Redirect(cmd, file), log)
+    
+    fold_many0(
+        pair(
+            delimited(multispace0, alt((tag(">>"), tag(">"), tag("<"))), multispace0),
+            |i| parse_token(i, pctx)
+        ),
+        move || cmd.clone(),
+        |acc, (op, target)| {
+            let mode = match op {
+                ">" => RedirectMode::Overwrite,
+                ">>" => RedirectMode::Append,
+                "<" => RedirectMode::Input,
+                _ => unreachable!(),
+            };
+            CommandExpr::Redirect {
+                cmd: Box::new(acc),
+                target,
+                mode,
+            }
+        }
+    )(input)
+}
+
+// 4. Simple: program + args
+fn parse_simple<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, CommandExpr> {
+    // A simple command is a sequence of tokens separated by spaces.
+    // It must have at least one token (the program).
+    
+    let (input, program) = parse_token(input, pctx)?;
+    let (input, args) = many0(preceded(multispace1, |i| parse_token(i, pctx)))(input)?;
+    
+    // Check if we didn't consume a token that looks like an operator?
+    // parse_token should not consume operators if they are unquoted.
+    // Actually, `parse_token` needs to stop at operators `|`, `&`, `>`, `<`.
+    
+    Ok((input, CommandExpr::Simple { program, args }))
+}
+
+// 5. Token: Expansion, Quotes
+fn parse_token<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, String> {
+    // A token is a mix of:
+    // - Unquoted chars (excluding whitespace and operators)
+    // - Quoted strings (single/double)
+    // - Escaped chars
+    // All concatenated.
+    
+    let (input, parts) = many1(alt((
+        parse_single_quoted,
+        |i| parse_double_quoted(i, pctx),
+        parse_escaped_char,
+        |i| parse_variable(i, pctx),
+        parse_unquoted_text
+    )))(input)?;
+    
+    let token = parts.concat();
+    Ok((input, normalize_path(token)))
+}
+
+fn is_operator_char(c: char) -> bool {
+    "|&><;".contains(c)
+}
+
+fn parse_unquoted_text(input: &str) -> IResult<&str, String> {
+    // Read until whitespace, quote, $, \, or operator
+    take_while1(|c: char| !c.is_whitespace() && !is_quote(c) && c != '$' && c != '\\' && !is_operator_char(c))(input)
+        .map(|(next, res)| (next, res.to_string()))
+}
+
+fn is_quote(c: char) -> bool {
+    c == '\'' || c == '"'
+}
+
+fn parse_escaped_char(input: &str) -> IResult<&str, String> {
+    let (input, _) = char('\\')(input)?;
+    let (input, c) = satisfy(|_| true)(input)?; // Take any char
+    Ok((input, c.to_string()))
+}
+
+fn parse_single_quoted(input: &str) -> IResult<&str, String> {
+    delimited(
+        char('\''),
+        map(take_while(|c| c != '\''), |s: &str| s.to_string()),
+        char('\'')
+    )(input)
+}
+
+fn parse_double_quoted<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, String> {
+    let (input, _) = char('"')(input)?;
+    let (input, parts) = many0(alt((
+        parse_escaped_char,
+        |i| parse_variable(i, pctx),
+        map(is_not("\"$\\"), |s: &str| s.to_string())
+    )))(input)?;
+    let (input, _) = char('"')(input)?;
+    Ok((input, parts.concat()))
+}
+
+fn parse_variable<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, String> {
+    let (input, _) = char('$')(input)?;
+    
+    // Check for brace
+    if let Ok((rem, _)) = char::<_, nom::error::Error<&str>>('{')(input) {
+        let (rem, name) = take_while1(|c: char| c != '}')(rem)?;
+        let (rem, _) = char('}')(rem)?;
+        let val = pctx.ctx.env.get(name).cloned().unwrap_or_default();
+        return Ok((rem, val));
     }
-
-    Ok(args)
+    
+    // Check for special vars
+    if let Ok((rem, _)) = char::<_, nom::error::Error<&str>>('?')(input) {
+        return Ok((rem, pctx.ctx.exit_code.to_string()));
+    }
+    
+    // Normal var name: alphanumeric + _
+    let (input, name) = take_while1(|c: char| c.is_alphanumeric() || c == '_')(input)?;
+    let val = pctx.ctx.env.get(name).cloned().unwrap_or_default();
+    Ok((input, val))
 }
 
 fn normalize_path(token: String) -> String {
@@ -141,6 +210,5 @@ fn normalize_path(token: String) -> String {
             return token.replace('/', &MAIN_SEPARATOR.to_string());
         }
     }
-    // On Unix, do not normalize \ to / as \ is valid filename char.
     token
 }

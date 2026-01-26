@@ -4,6 +4,7 @@ use crate::pas::context::ShellContext;
 use anyhow::{Result, Context, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::io::{Read, Write};
 
 fn resolve_path(ctx: &ShellContext, path: &str) -> PathBuf {
     let p = Path::new(path);
@@ -16,7 +17,7 @@ fn resolve_path(ctx: &ShellContext, path: &str) -> PathBuf {
 
 pub struct RmCommand;
 impl Executable for RmCommand {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
         let mut recursive = false;
         let mut force = false;
         let mut paths = Vec::new();
@@ -56,7 +57,7 @@ impl Executable for RmCommand {
 
 pub struct MkdirCommand;
 impl Executable for MkdirCommand {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
         let mut parents = false;
         let mut paths = Vec::new();
 
@@ -85,7 +86,7 @@ impl Executable for MkdirCommand {
 
 pub struct CpCommand;
 impl Executable for CpCommand {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
         let mut recursive = false;
         let mut paths = Vec::new();
 
@@ -161,7 +162,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 
 pub struct CdCommand;
 impl Executable for CdCommand {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
         // args[0] is "cd". args[1] is path.
         let path_str = if args.len() < 2 {
             // Default to HOME or root?

@@ -5,6 +5,7 @@ use crate::config::PavidiConfig;
 use crate::runner::{recursive_runner, CallStack};
 use anyhow::Result;
 use std::sync::Arc;
+use std::io::{Read, Write};
 
 pub struct TaskRunnerAdapter {
     pub task_name: String,
@@ -12,7 +13,7 @@ pub struct TaskRunnerAdapter {
 }
 
 impl Executable for TaskRunnerAdapter {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
         let extra_args = args.iter().skip(1).cloned().collect::<Vec<_>>();
         let mut call_stack = CallStack::new();
 
