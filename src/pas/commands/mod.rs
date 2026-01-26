@@ -1,4 +1,4 @@
-pub mod builtin;
+pub mod builtins;
 pub mod system;
 pub mod adapter;
 
