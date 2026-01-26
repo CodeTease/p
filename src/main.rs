@@ -3,6 +3,7 @@ mod config;
 mod runner;
 mod handlers;
 mod utils;
+pub mod pas;
 
 use anyhow::Result;
 use clap::Parser;

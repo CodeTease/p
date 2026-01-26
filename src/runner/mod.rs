@@ -9,6 +9,8 @@ use std::time::Duration;
 use rayon::prelude::*;
 use crate::config::PavidiConfig;
 use crate::utils::{detect_shell, expand_command, run_shell_command};
+use crate::pas::context::ShellContext;
+use crate::pas::run_command_line;
 use self::task::RunnerTask;
 use self::cache::{is_up_to_date, save_cache};
 use self::portable::run_portable_command;
@@ -50,7 +52,8 @@ pub fn recursive_runner(
     call_stack: &mut CallStack,
     extra_args: &[String],
     capture_output: bool, // true = buffer output (for parallel), false = inherit
-    dry_run: bool
+    dry_run: bool,
+    mut context: Option<&mut ShellContext>
 ) -> Result<()> {
     call_stack.push(task_name)?;
 
@@ -74,14 +77,20 @@ pub fn recursive_runner(
             
             // Snapshot the stack to avoid capturing &mut CallStack in the closure
             let stack_snapshot = call_stack.clone_stack();
+            // Snapshot context for parallel execution
+            let context_snapshot = context.as_ref().map(|c| (**c).clone());
 
             // Rayon parallel iterator
             let errors: Vec<String> = deps
                 .par_iter()
                 .map(|dep_name| {
-                    let mut local_stack = stack_snapshot.clone_stack(); 
+                    let mut local_stack = stack_snapshot.clone_stack();
+                    // Clone context for this thread
+                    let mut local_ctx_val = context_snapshot.clone();
+                    let local_ctx = local_ctx_val.as_mut();
+ 
                     // Parallel deps MUST capture output to prevent mixed logs
-                    recursive_runner(dep_name, config, &mut local_stack, &[], true, dry_run)
+                    recursive_runner(dep_name, config, &mut local_stack, &[], true, dry_run, local_ctx)
                         .map_err(|e| format!("Dep '{}' failed: {}", dep_name, e))
                 })
                 .filter_map(|res| res.err())
@@ -96,7 +105,7 @@ pub fn recursive_runner(
                 info!("{} Running dependencies sequentially...", "🔗".blue());
             }
             for dep in deps {
-                recursive_runner(&dep, config, call_stack, &[], capture_output, dry_run)?;
+                recursive_runner(&dep, config, call_stack, &[], capture_output, dry_run, context.as_deref_mut())?;
             }
         }
     }
@@ -159,19 +168,40 @@ pub fn recursive_runner(
                 info!("{} Executing: {}", "::".blue(), final_cmd);
             }
 
-            // Check for portable commands
-            let result = if final_cmd.trim_start().starts_with("p:") {
-                run_portable_command(&final_cmd)
-            } else {
-                run_shell_command(&final_cmd, &config.env, capture_output, task_name, &shell_cmd, timeout_duration)
-            };
-
-            if let Err(e) = result {
-                if ignore_failure {
-                     log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
-                     continue;
+            // Execute using PAS if context is available
+            if let Some(ctx) = &mut context {
+                match run_command_line(&final_cmd, ctx) {
+                    Ok(0) => {}, // Success
+                    Ok(code) => {
+                        if ignore_failure {
+                            log::warn!("{} Command failed with exit code {} but ignored", "⚠️".yellow(), code);
+                            continue;
+                        }
+                        bail!("❌ Task '{}' failed at: '{}' -> Exit code {}", task_name, final_cmd, code);
+                    },
+                    Err(e) => {
+                        if ignore_failure {
+                            log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
+                            continue;
+                        }
+                        bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
+                    }
                 }
-                bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
+            } else {
+                // Fallback to legacy portable/shell command
+                let result = if final_cmd.trim_start().starts_with("p:") {
+                    run_portable_command(&final_cmd)
+                } else {
+                    run_shell_command(&final_cmd, &config.env, capture_output, task_name, &shell_cmd, timeout_duration)
+                };
+
+                if let Err(e) = result {
+                    if ignore_failure {
+                        log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
+                        continue;
+                    }
+                    bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
+                }
             }
         }
 
