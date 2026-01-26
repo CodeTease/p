@@ -17,7 +17,7 @@ pub enum Commands {
     #[command(visible_alias = "ls")]
     List,
 
-    /// Run a task defined in .p.toml
+    /// Run a task defined in p.toml
     R { 
         #[arg(default_value = "default")]
         task: String,
@@ -30,7 +30,7 @@ pub enum Commands {
         args: Vec<String>,
     },
     
-    /// Clean artifacts defined in .p.toml
+    /// Clean artifacts defined in p.toml
     C,
 
     /// Jump to a directory (Resolve path for shell hook)

@@ -13,7 +13,7 @@ pub fn handle_dir_jump(target_path: PathBuf) -> Result<()> {
     }
 
     let abs_path = fs::canonicalize(&target_path)?;
-    // Now config includes merged envs from .p.toml and .env
+    // Now config includes merged envs from p.toml and .env
     let config = load_config(&abs_path)?;
 
     // Detect shell preference or fallback to system default

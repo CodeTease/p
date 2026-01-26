@@ -2,5 +2,5 @@
 
 *.vegh
 .veghcache
-.p.toml
+p.toml
 .cargo

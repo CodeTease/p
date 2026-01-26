@@ -28,14 +28,14 @@ pub struct CleanConfig {
 }
 
 pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
-    let config_path = dir.join(".p.toml");
+    let config_path = dir.join("p.toml");
     if !config_path.exists() {
-        bail!("❌ Critical: '.p.toml' not found in {:?}.", dir);
+        bail!("❌ Critical: 'p.toml' not found in {:?}.", dir);
     }
-    let content = fs::read_to_string(&config_path).context("Failed to read .p.toml")?;
+    let content = fs::read_to_string(&config_path).context("Failed to read p.toml")?;
     
-    // 1. Parse .p.toml (Base Layer)
-    let mut config: PavidiConfig = toml::from_str(&content).context("Failed to parse .p.toml")?;
+    // 1. Parse p.toml (Base Layer)
+    let mut config: PavidiConfig = toml::from_str(&content).context("Failed to parse p.toml")?;
 
     // 2. Load .env using dotenvy (Override Layer)
     // Determines filename: .env or .env.prod based on P_ENV
@@ -52,7 +52,7 @@ pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
         // This keeps the separation clean until execution.
         for item in dotenvy::from_path_iter(&env_path)? {
             let (key, val) = item?;
-            // .env overrides .p.toml
+            // .env overrides p.toml
             config.env.insert(key, val);
         }
     }

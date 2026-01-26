@@ -5,7 +5,7 @@ use crate::config::load_config;
 
 pub fn handle_env() -> Result<()> {
     let current_dir = env::current_dir()?;
-    // Load config which merges .p.toml and .env
+    // Load config which merges p.toml and .env
     let config = load_config(&current_dir)?;
 
     println!("{} Merged Environment Variables:", "🔍".cyan());
