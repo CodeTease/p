@@ -4,6 +4,7 @@ pub mod cache;
 use anyhow::{Result, bail};
 use colored::*;
 use std::collections::HashSet;
+use std::time::Duration;
 use rayon::prelude::*;
 use crate::config::PavidiConfig;
 use crate::utils::{detect_shell, expand_command, run_shell_command};
@@ -55,11 +56,11 @@ pub fn recursive_runner(
     let task = runner_section.get(task_name).expect("Task check passed before");
 
     // Destructure task config
-    let (mut cmds, deps, parallel_deps, sources, outputs) = match task {
-        RunnerTask::Single(cmd) => (vec![cmd.clone()], vec![], false, None, None),
-        RunnerTask::List(cmds) => (cmds.clone(), vec![], false, None, None),
-        RunnerTask::Full { cmds, deps, parallel, sources, outputs, .. } => 
-            (cmds.clone(), deps.clone(), *parallel, sources.clone(), outputs.clone()),
+    let (mut cmds, deps, parallel_deps, sources, outputs, windows, linux, macos, ignore_failure, timeout_sec) = match task {
+        RunnerTask::Single(cmd) => (vec![cmd.clone()], vec![], false, None, None, None, None, None, false, None),
+        RunnerTask::List(cmds) => (cmds.clone(), vec![], false, None, None, None, None, None, false, None),
+        RunnerTask::Full { cmds, deps, parallel, sources, outputs, windows, linux, macos, ignore_failure, timeout, .. } => 
+            (cmds.clone(), deps.clone(), *parallel, sources.clone(), outputs.clone(), windows.clone(), linux.clone(), macos.clone(), *ignore_failure, *timeout),
     };
 
     // 1. Run Dependencies
@@ -113,6 +114,25 @@ pub fn recursive_runner(
     }
 
     // 3. Execute Main Commands
+
+    // OS Detection & Command Selection
+    let os = std::env::consts::OS;
+    let os_cmds = match os {
+        "windows" => windows.as_ref(),
+        "linux" => linux.as_ref(),
+        "macos" => macos.as_ref(),
+        _ => None,
+    };
+
+    if let Some(c) = os_cmds {
+        cmds = c.clone();
+    } 
+
+    let has_os_config = windows.is_some() || linux.is_some() || macos.is_some();
+    if cmds.is_empty() && has_os_config {
+         bail!("No commands defined for this OS ({})", os);
+    }
+
     if !cmds.is_empty() {
         if !capture_output {
             info!("{} Running task: {}", "⚡".yellow(), task_name.bold());
@@ -120,6 +140,12 @@ pub fn recursive_runner(
 
         // Phase 3: Optimize Core Logic - detect shell
         let shell_cmd = detect_shell(config.project.as_ref().and_then(|p| p.shell.as_ref()));
+        
+        let timeout_duration = match timeout_sec {
+            Some(0) => None,
+            Some(s) => Some(Duration::from_secs(s)),
+            None => Some(Duration::from_secs(1800)),
+        };
 
         for cmd in &mut cmds {
             // Apply Argument Expansion ($1, $2...)
@@ -134,7 +160,11 @@ pub fn recursive_runner(
                 info!("{} Executing: {}", "::".blue(), final_cmd);
             }
 
-            if let Err(e) = run_shell_command(&final_cmd, &config.env, capture_output, task_name, &shell_cmd) {
+            if let Err(e) = run_shell_command(&final_cmd, &config.env, capture_output, task_name, &shell_cmd, timeout_duration) {
+                if ignore_failure {
+                     log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
+                     continue;
+                }
                 bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
             }
         }

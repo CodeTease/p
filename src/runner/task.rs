@@ -21,5 +21,18 @@ pub enum RunnerTask {
         // Conditional Execution
         sources: Option<Vec<String>>,
         outputs: Option<Vec<String>>,
+
+        // OS-specific commands
+        windows: Option<Vec<String>>,
+        linux: Option<Vec<String>>,
+        macos: Option<Vec<String>>,
+
+        // Error Handling
+        #[serde(default)]
+        ignore_failure: bool,
+
+        // Timeout (seconds)
+        #[serde(default)]
+        timeout: Option<u64>,
     },
 }

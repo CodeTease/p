@@ -4,6 +4,9 @@ use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::env;
 use log::{info, debug, error};
+use wait_timeout::ChildExt;
+use std::time::Duration;
+use std::io::Read;
 
 /// Replaces $1, $2... with corresponding args.
 /// Fallback: If no placeholders found, append args to the end.
@@ -37,7 +40,8 @@ pub fn run_shell_command(
     env_vars: &HashMap<String, String>, 
     capture: bool,
     task_label: &str,
-    shell_cmd: &str
+    shell_cmd: &str,
+    timeout: Option<Duration>
 ) -> Result<()> {
     // Determine flag based on shell
     // Simple heuristic: "cmd" or "cmd.exe" uses /C, others use -c
@@ -61,30 +65,48 @@ pub fn run_shell_command(
     if capture {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
-
-        let output = command.output().context("Failed to spawn shell process (captured)")?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        if !stdout.trim().is_empty() {
-            info!("[{}] {}", task_label.cyan(), stdout.trim());
-        }
-        if !stderr.trim().is_empty() {
-            error!("[{}] {}", task_label.red(), stderr.trim());
-        }
-
-        if !output.status.success() {
-            bail!("Exit code: {:?}", output.status.code());
-        }
     } else {
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
+    }
 
-        let status = command.status().context("Failed to spawn shell process")?;
-        if !status.success() {
-            bail!("Exit code: {:?}", status.code());
+    let mut child = command.spawn().context("Failed to spawn shell process")?;
+
+    let status = match timeout {
+        Some(t) => {
+            match child.wait_timeout(t).context("Failed to wait on child")? {
+                Some(status) => status,
+                None => {
+                    // Timeout occurred, kill the child
+                    let _ = child.kill();
+                    child.wait().context("Failed to wait on killed child")?;
+                    bail!("Execution timed out after {:?}", t);
+                }
+            }
+        },
+        None => child.wait().context("Failed to wait on child")?,
+    };
+
+    if capture {
+        if let Some(mut stdout_pipe) = child.stdout.take() {
+            let mut stdout = String::new();
+            stdout_pipe.read_to_string(&mut stdout).unwrap_or_default();
+            if !stdout.trim().is_empty() {
+                info!("[{}] {}", task_label.cyan(), stdout.trim());
+            }
         }
+        
+        if let Some(mut stderr_pipe) = child.stderr.take() {
+            let mut stderr = String::new();
+            stderr_pipe.read_to_string(&mut stderr).unwrap_or_default();
+            if !stderr.trim().is_empty() {
+                error!("[{}] {}", task_label.red(), stderr.trim());
+            }
+        }
+    }
+
+    if !status.success() {
+        bail!("Exit code: {:?}", status.code());
     }
 
     Ok(())
