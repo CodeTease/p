@@ -14,6 +14,7 @@ impl Executable for CatCommand {
         _ctx: &mut ShellContext,
         _stdin: Option<Box<dyn Read + Send>>,
         stdout: Option<Box<dyn Write + Send>>,
+        _stderr: Option<Box<dyn Write + Send>>,
     ) -> Result<i32> {
         let mut out: Box<dyn Write + Send> = match stdout {
             Some(s) => s,

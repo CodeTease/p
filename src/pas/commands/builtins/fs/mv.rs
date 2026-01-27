@@ -15,9 +15,14 @@ impl Executable for MvCommand {
         _ctx: &mut ShellContext,
         _stdin: Option<Box<dyn std::io::Read + Send>>,
         _stdout: Option<Box<dyn std::io::Write + Send>>,
+        stderr: Option<Box<dyn std::io::Write + Send>>,
     ) -> Result<i32> {
         if args.len() < 3 {
-            writeln!(std::io::stderr(), "Usage: mv <source1> <source2> ... <destination>")?;
+            if let Some(mut err) = stderr {
+                writeln!(err, "Usage: mv <source1> <source2> ... <destination>")?;
+            } else {
+                writeln!(std::io::stderr(), "Usage: mv <source1> <source2> ... <destination>")?;
+            }
             return Ok(1);
         }
 

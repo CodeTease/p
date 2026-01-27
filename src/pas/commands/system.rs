@@ -14,7 +14,8 @@ impl Executable for SystemCommand {
         args: &[String], 
         ctx: &mut ShellContext, 
         stdin: Option<Box<dyn Read + Send>>, 
-        stdout: Option<Box<dyn Write + Send>>
+        stdout: Option<Box<dyn Write + Send>>,
+        stderr: Option<Box<dyn Write + Send>>
     ) -> Result<i32> {
         if args.is_empty() {
             return Ok(0);
@@ -45,6 +46,13 @@ impl Executable for SystemCommand {
             cmd.stdout(Stdio::inherit());
         }
 
+        // Handle Stderr
+        if stderr.is_some() {
+            cmd.stderr(Stdio::piped());
+        } else {
+            cmd.stderr(Stdio::inherit());
+        }
+
         let mut child = cmd.spawn().with_context(|| format!("Failed to execute command: {}", program))?;
 
         // Spawn thread for Stdin
@@ -69,11 +77,28 @@ impl Executable for SystemCommand {
             None
         };
 
+        // Spawn thread for Stderr
+        let stderr_thread = if let Some(mut dest) = stderr {
+            if let Some(mut child_err) = child.stderr.take() {
+                 Some(thread::spawn(move || {
+                     std::io::copy(&mut child_err, &mut dest).ok();
+                 }))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let status = child.wait()?;
         
         // Wait for stdout thread to finish copying (ensure all output is flushed)
         if let Some(handle) = stdout_thread {
             handle.join().ok(); 
+        }
+
+        if let Some(handle) = stderr_thread {
+            handle.join().ok();
         }
 
         Ok(status.code().unwrap_or(1))

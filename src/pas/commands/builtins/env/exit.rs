@@ -13,6 +13,7 @@ impl Executable for ExitCommand {
         _ctx: &mut ShellContext,
         _stdin: Option<Box<dyn Read + Send>>,
         mut _stdout: Option<Box<dyn Write + Send>>,
+        _stderr: Option<Box<dyn Write + Send>>,
     ) -> Result<i32> {
         let exit_code = if args.len() > 1 {
             args[1].parse::<i32>().unwrap_or(0)

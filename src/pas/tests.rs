@@ -45,7 +45,7 @@ fn test_cd_builtin() {
     let mut ctx = ShellContext::new();
     let cd = CdCommand;
     // execute now expects expanded args (Vec<String>) because executor calls it after expansion
-    cd.execute(&["cd".to_string(), "..".to_string()], &mut ctx, None, None).unwrap();
+    cd.execute(&["cd".to_string(), "..".to_string()], &mut ctx, None, None, None).unwrap();
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn test_rm_builtin() {
     fs::write(&test_file, "content").unwrap();
     
     let rm = RmCommand;
-    rm.execute(&["rm".to_string(), "test_file_rm.txt".to_string()], &mut ctx, None, None).unwrap();
+    rm.execute(&["rm".to_string(), "test_file_rm.txt".to_string()], &mut ctx, None, None, None).unwrap();
     
     assert!(!test_file.exists());
 }
@@ -167,4 +167,57 @@ fn test_sequence() {
     let mut ctx = ShellContext::new();
     crate::pas::run_command_line("A=1; A=2", &mut ctx).unwrap();
     assert_eq!(ctx.env.get("A").unwrap(), "2");
+}
+
+#[test]
+fn test_tilde_expansion() {
+    let mut ctx = ShellContext::new();
+    // Mock HOME
+    let home = std::env::temp_dir().join("mock_home");
+    fs::create_dir_all(&home).unwrap();
+    ctx.env.insert("HOME".to_string(), home.to_string_lossy().to_string());
+    
+    // Test simple tilde
+    crate::pas::run_command_line("echo ~ > ~/tilde_test.txt", &mut ctx).unwrap();
+    
+    let expected_path = home.join("tilde_test.txt");
+    assert!(expected_path.exists());
+    let content = fs::read_to_string(&expected_path).unwrap();
+    // echo ~ prints the home path. Note: echo adds newline, trim removes it.
+    assert_eq!(content.trim(), home.to_string_lossy().trim());
+    
+    // Cleanup
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn test_stderr_redirect() {
+    let mut ctx = ShellContext::new();
+    let out_file = ctx.cwd.join("test_err.txt");
+    if out_file.exists() { fs::remove_file(&out_file).unwrap(); }
+    
+    // mv without args prints to stderr
+    let cmd = format!("mv 2> {}", out_file.to_string_lossy());
+    crate::pas::run_command_line(&cmd, &mut ctx).unwrap();
+    
+    assert!(out_file.exists());
+    let content = fs::read_to_string(&out_file).unwrap();
+    assert!(content.contains("Usage:"));
+    fs::remove_file(out_file).unwrap();
+}
+
+#[test]
+fn test_merge_stderr() {
+    let mut ctx = ShellContext::new();
+    let out_file = ctx.cwd.join("test_merge.txt");
+    if out_file.exists() { fs::remove_file(&out_file).unwrap(); }
+    
+    // mv > file 2>&1
+    let cmd = format!("mv > {} 2>&1", out_file.to_string_lossy());
+    crate::pas::run_command_line(&cmd, &mut ctx).unwrap();
+    
+    assert!(out_file.exists());
+    let content = fs::read_to_string(&out_file).unwrap();
+    assert!(content.contains("Usage:"));
+    fs::remove_file(out_file).unwrap();
 }

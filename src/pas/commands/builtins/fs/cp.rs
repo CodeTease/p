@@ -9,7 +9,7 @@ use crate::pas::commands::builtins::common::{resolve_path, copy_dir_recursive};
 
 pub struct CpCommand;
 impl Executable for CpCommand {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>, _stderr: Option<Box<dyn Write + Send>>) -> Result<i32> {
         let mut recursive = false;
         let mut paths = Vec::new();
 

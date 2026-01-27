@@ -24,6 +24,7 @@ pub enum CommandExpr {
         cmd: Box<CommandExpr>,
         target: Arg,
         mode: RedirectMode, // Create, Append, Input
+        source_fd: i32,     // 1 for stdout, 2 for stderr (default depends on context)
     },
     // Logic AND: "cargo build && cargo run"
     And(Box<CommandExpr>, Box<CommandExpr>),
@@ -56,4 +57,5 @@ pub enum RedirectMode {
     Overwrite, // >
     Append,    // >>
     Input,     // <
+    MergeStderrToStdout, // 2>&1
 }

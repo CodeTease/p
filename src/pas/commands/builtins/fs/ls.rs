@@ -15,6 +15,7 @@ impl Executable for LsCommand {
         ctx: &mut ShellContext,
         _stdin: Option<Box<dyn Read + Send>>,
         stdout: Option<Box<dyn Write + Send>>,
+        _stderr: Option<Box<dyn Write + Send>>,
     ) -> Result<i32> {
         let path_str = if args.len() > 1 {
             &args[1]

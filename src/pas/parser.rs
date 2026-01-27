@@ -1,12 +1,13 @@
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while, take_while1},
-    character::complete::{char, multispace0, multispace1, satisfy},
-    combinator::map,
+    character::complete::{char, multispace0, multispace1, satisfy, digit1, one_of},
+    combinator::{map, peek, opt, cut},
     multi::{many0, many1, fold_many0, separated_list0},
     sequence::{delimited, pair, preceded},
     IResult,
 };
+use nom::error::Error;
 use crate::pas::ast::{CommandExpr, RedirectMode, Arg, ArgPart};
 use crate::pas::context::ShellContext;
 
@@ -88,30 +89,51 @@ fn parse_pipe<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, Comm
     )(input)
 }
 
-// 3. Redirect: >, >>, <
+// 3. Redirect: >, >>, <, 2>&1
 fn parse_redirect<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, CommandExpr> {
     let (input, cmd) = parse_atomic(input, pctx)?;
     
-    fold_many0(
-        pair(
-            delimited(multispace0, alt((tag(">>"), tag(">"), tag("<"))), multispace0),
-            |i| parse_token(i, pctx)
-        ),
-        move || cmd.clone(),
-        |acc, (op, target)| {
-            let mode = match op {
-                ">" => RedirectMode::Overwrite,
-                ">>" => RedirectMode::Append,
-                "<" => RedirectMode::Input,
-                _ => unreachable!(),
-            };
-            CommandExpr::Redirect {
-                cmd: Box::new(acc),
-                target,
-                mode,
-            }
+    let (input, redirects) = many0(|i| parse_redirect_entry(i, pctx))(input)?;
+    
+    let res = redirects.into_iter().rev().fold(cmd, |acc, (mode, target, source_fd)| {
+        CommandExpr::Redirect {
+            cmd: Box::new(acc),
+            target,
+            mode,
+            source_fd,
         }
-    )(input)
+    });
+    
+    Ok((input, res))
+}
+
+fn parse_redirect_entry<'a>(input: &'a str, pctx: &ParserContext) -> IResult<&'a str, (RedirectMode, Arg, i32)> {
+    let (input, _) = multispace0(input)?;
+    let (input, fd_str) = opt(digit1)(input)?;
+    let source_fd = fd_str.map(|s: &str| s.parse::<i32>().unwrap()).unwrap_or(-1);
+
+    alt((
+        // 2>&1
+        map(preceded(tag(">&"), cut(digit1)), move |target_fd: &str| {
+             let src = if source_fd == -1 { 1 } else { source_fd };
+             (RedirectMode::MergeStderrToStdout, Arg(vec![ArgPart::Literal(target_fd.to_string())]), src)
+        }),
+        // >>
+        map(preceded(tag(">>"), cut(preceded(multispace0, |i| parse_token(i, pctx)))), move |target| {
+             let src = if source_fd == -1 { 1 } else { source_fd };
+             (RedirectMode::Append, target, src)
+        }),
+        // >
+        map(preceded(tag(">"), cut(preceded(multispace0, |i| parse_token(i, pctx)))), move |target| {
+             let src = if source_fd == -1 { 1 } else { source_fd };
+             (RedirectMode::Overwrite, target, src)
+        }),
+        // <
+        map(preceded(tag("<"), cut(preceded(multispace0, |i| parse_token(i, pctx)))), move |target| {
+             let src = if source_fd == -1 { 0 } else { source_fd };
+             (RedirectMode::Input, target, src)
+        }),
+    ))(input)
 }
 
 // 4. Atomic: If, While, Subshell, Simple/Assignment
@@ -317,6 +339,11 @@ fn parse_variable<'a>(input: &'a str, _pctx: &ParserContext) -> IResult<&'a str,
 }
 
 fn parse_unquoted_text_part(input: &str) -> IResult<&str, Vec<ArgPart>> {
+    // Stop if we see start of redirect (digit followed by > or <)
+    if let Ok((_, _)) = peek(pair(digit1::<&str, Error<&str>>, one_of::<&str, &str, Error<&str>>("><")))(input) {
+         return Err(nom::Err::Error(Error::new(input, nom::error::ErrorKind::Tag)));
+    }
+
     take_while1(|c: char| !c.is_whitespace() && !is_quote(c) && c != '$' && c != '\\' && !is_operator_char(c))(input)
         .map(|(next, res)| (next, vec![ArgPart::Literal(res.to_string())]))
 }

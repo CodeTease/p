@@ -28,6 +28,9 @@ pub fn register_all_builtins(ctx: &mut ShellContext) {
     // Env/Navigation
     ctx.register_command("cd", Box::new(env::cd::CdCommand)); // `cd` in CMD (without args) is like `pwd`? I'll look into it later
     ctx.register_command("exit", Box::new(env::exit::ExitCommand)); //
+    ctx.register_command("export", Box::new(env::export::ExportCommand));
+    ctx.register_command("source", Box::new(env::source::SourceCommand));
+    ctx.register_command(".", Box::new(env::source::SourceCommand));
 
     // IO
     ctx.register_command("echo", Box::new(io::echo::EchoCommand)); //

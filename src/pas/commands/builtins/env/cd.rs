@@ -8,7 +8,7 @@ use crate::pas::commands::builtins::common::resolve_path;
 
 pub struct CdCommand;
 impl Executable for CdCommand {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>, _stderr: Option<Box<dyn Write + Send>>) -> Result<i32> {
         // args[0] is "cd". args[1] is path.
         let path_str = if args.len() < 2 {
             // Default to HOME or root?

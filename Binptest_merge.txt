@@ -1,0 +1,1 @@
+Usage: mv <source1> <source2> ... <destination>

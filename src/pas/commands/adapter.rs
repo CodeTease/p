@@ -13,7 +13,7 @@ pub struct TaskRunnerAdapter {
 }
 
 impl Executable for TaskRunnerAdapter {
-    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>) -> Result<i32> {
+    fn execute(&self, args: &[String], ctx: &mut ShellContext, _stdin: Option<Box<dyn Read + Send>>, _stdout: Option<Box<dyn Write + Send>>, _stderr: Option<Box<dyn Write + Send>>) -> Result<i32> {
         let extra_args = args.iter().skip(1).cloned().collect::<Vec<_>>();
         let mut call_stack = CallStack::new();
 

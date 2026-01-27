@@ -12,6 +12,7 @@ pub trait Executable: Send + Sync {
         args: &[String], 
         ctx: &mut ShellContext, 
         stdin: Option<Box<dyn Read + Send>>, 
-        stdout: Option<Box<dyn Write + Send>>
+        stdout: Option<Box<dyn Write + Send>>,
+        stderr: Option<Box<dyn Write + Send>>,
     ) -> Result<i32>;
 }

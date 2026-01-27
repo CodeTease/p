@@ -14,6 +14,7 @@ impl Executable for EchoCommand {
         _ctx: &mut ShellContext,
         _stdin: Option<Box<dyn Read + Send>>,
         stdout: Option<Box<dyn Write + Send>>,
+        _stderr: Option<Box<dyn Write + Send>>,
     ) -> Result<i32> {
         // Skip "echo" in args[0]
         let output = args[1..].join(" ");
