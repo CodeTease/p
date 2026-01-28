@@ -10,13 +10,50 @@ use std::collections::HashSet;
 use std::time::Duration;
 use rayon::prelude::*;
 use crate::config::PavidiConfig;
-use crate::utils::{detect_shell, expand_command, run_shell_command};
+use crate::utils::{detect_shell, expand_command, run_shell_command, CaptureMode};
 use crate::pas::context::ShellContext;
 use crate::pas::run_command_line;
+use crate::logger::write_log;
 use self::task::RunnerTask;
 use self::cache::{is_up_to_date, save_cache};
 use self::portable::run_portable_command;
 use log::{info, error};
+use std::time::Instant;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
+struct PasTeeWriter {
+    buffer: Arc<Mutex<Vec<u8>>>,
+    inner: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
+}
+
+impl PasTeeWriter {
+    fn new(buffer: Arc<Mutex<Vec<u8>>>, inner: Option<Box<dyn Write + Send>>) -> Self {
+        Self {
+            buffer,
+            inner: Arc::new(Mutex::new(inner)),
+        }
+    }
+}
+
+impl Write for PasTeeWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.buffer.lock().unwrap().extend_from_slice(buf);
+        if let Some(inner) = self.inner.lock().unwrap().as_mut() {
+            inner.write(buf)
+        } else {
+            Ok(buf.len())
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        if let Some(inner) = self.inner.lock().unwrap().as_mut() {
+            inner.flush()
+        } else {
+            Ok(())
+        }
+    }
+}
 
 pub struct CallStack {
     stack: HashSet<String>,
@@ -148,6 +185,26 @@ pub fn recursive_runner(
             info!("{} Running task: {}", "⚡".yellow(), task_name.bold());
         }
 
+        // Log configuration
+        let (log_strategy, _) = if let Some(p) = &config.project {
+            (p.log_strategy, p.log_plain)
+        } else if let Some(m) = &config.module {
+            (m.log_strategy, m.log_plain)
+        } else {
+            (None, None)
+        };
+        let log_enabled = log_strategy.unwrap_or(crate::config::LogStrategy::None) != crate::config::LogStrategy::None;
+
+        let capture_mode = if capture_output {
+            CaptureMode::Buffer
+        } else {
+            if log_enabled {
+                CaptureMode::Tee
+            } else {
+                CaptureMode::Inherit
+            }
+        };
+
         // Optimize Core Logic - detect shell
         let shell_pref = config.project.as_ref().and_then(|p| p.shell.as_ref())
             .or(config.module.as_ref().and_then(|m| m.shell.as_ref()));
@@ -172,18 +229,55 @@ pub fn recursive_runner(
                 info!("{} Executing: {}", "::".blue(), final_cmd);
             }
 
+            let start_time = Instant::now();
+            let mut captured_output = String::new();
+            let mut exit_code = 0;
+
             // Execute using PAS if context is available
             if let Some(ctx) = &mut context {
-                match run_command_line(&final_cmd, ctx) {
-                    Ok(0) => {}, // Success
+                let res = if capture_mode != CaptureMode::Inherit {
+                    let buf = Arc::new(Mutex::new(Vec::new()));
+                    // Create writers. If Tee, print to Stdout/Stderr. If Buffer, None.
+                    let (out_writer, err_writer) = if capture_mode == CaptureMode::Tee {
+                        (Some(Box::new(PasTeeWriter::new(buf.clone(), Some(Box::new(std::io::stdout())))) as Box<dyn Write + Send>),
+                         Some(Box::new(PasTeeWriter::new(buf.clone(), Some(Box::new(std::io::stderr())))) as Box<dyn Write + Send>))
+                    } else {
+                        // Buffer mode: Capture only.
+                        (Some(Box::new(PasTeeWriter::new(buf.clone(), None)) as Box<dyn Write + Send>),
+                         Some(Box::new(PasTeeWriter::new(buf.clone(), None)) as Box<dyn Write + Send>))
+                    };
+
+                    let r = run_command_line(&final_cmd, ctx, out_writer, err_writer);
+                    
+                    let output_bytes = buf.lock().unwrap();
+                    captured_output = String::from_utf8_lossy(&output_bytes).to_string();
+                    
+                    if capture_mode == CaptureMode::Buffer && !captured_output.trim().is_empty() {
+                        info!("[{}] output:\n{}", task_name.cyan(), captured_output.trim());
+                    }
+                    r
+                } else {
+                    run_command_line(&final_cmd, ctx, None, None)
+                };
+
+                match res {
+                    Ok(0) => exit_code = 0,
                     Ok(code) => {
+                        exit_code = code;
+                        if log_enabled {
+                            let _ = write_log(task_name, &final_cmd, &captured_output, config, start_time.elapsed(), exit_code, &config.env);
+                        }
                         if ignore_failure {
                             log::warn!("{} Command failed with exit code {} but ignored", "⚠️".yellow(), code);
-                            continue;
+                        } else {
+                            bail!("❌ Task '{}' failed at: '{}' -> Exit code {}", task_name, final_cmd, code);
                         }
-                        bail!("❌ Task '{}' failed at: '{}' -> Exit code {}", task_name, final_cmd, code);
                     },
                     Err(e) => {
+                        // PAS execution error (not command exit code)
+                        if log_enabled {
+                            let _ = write_log(task_name, &final_cmd, &format!("Internal Error: {}\nPartial Output:\n{}", e, captured_output), config, start_time.elapsed(), 1, &config.env);
+                        }
                         if ignore_failure {
                             log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
                             continue;
@@ -193,19 +287,51 @@ pub fn recursive_runner(
                 }
             } else {
                 // Fallback to legacy portable/shell command
-                let result = if final_cmd.trim_start().starts_with("p:") {
-                    run_portable_command(&final_cmd)
+                if final_cmd.trim_start().starts_with("p:") {
+                     if let Err(e) = run_portable_command(&final_cmd) {
+                        if ignore_failure {
+                            log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
+                            continue;
+                        }
+                        bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
+                     }
                 } else {
-                    run_shell_command(&final_cmd, &config.env, capture_output, task_name, &shell_cmd, timeout_duration)
-                };
-
-                if let Err(e) = result {
-                    if ignore_failure {
-                        log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
-                        continue;
+                    let result = run_shell_command(&final_cmd, &config.env, capture_mode, task_name, &shell_cmd, timeout_duration);
+                    
+                    match result {
+                        Ok((code, output)) => {
+                            captured_output = output;
+                            exit_code = code;
+                            if code != 0 {
+                                if log_enabled {
+                                    let _ = write_log(task_name, &final_cmd, &captured_output, config, start_time.elapsed(), code, &config.env);
+                                }
+                                if ignore_failure {
+                                    log::warn!("{} Command failed but ignored (code {})", "⚠️".yellow(), code);
+                                } else {
+                                    bail!("❌ Task '{}' failed at: '{}' -> Exit code {}", task_name, final_cmd, code);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                             // Execution error (timeout, etc)
+                            if log_enabled {
+                                let _ = write_log(task_name, &final_cmd, &format!("Execution Error: {}", e), config, start_time.elapsed(), 1, &config.env);
+                            }
+                            if ignore_failure {
+                                log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
+                                continue;
+                            }
+                            bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
+                        }
                     }
-                    bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
                 }
+            }
+
+            if log_enabled {
+                 if let Ok(Some(path)) = write_log(task_name, &final_cmd, &captured_output, config, start_time.elapsed(), exit_code, &config.env) {
+                     info!("{} Log saved: {}", "📝".dimmed(), path.display());
+                 }
             }
         }
 

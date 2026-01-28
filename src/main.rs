@@ -3,6 +3,7 @@ mod config;
 mod runner;
 mod handlers;
 mod utils;
+mod logger;
 pub mod pas;
 
 use anyhow::Result;

@@ -27,11 +27,21 @@ pub struct Metadata {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LogStrategy {
+    Always,
+    ErrorOnly,
+    None,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ProjectConfig {
     #[serde(flatten)]
     pub metadata: Metadata,
     pub shell: Option<String>,
+    pub log_strategy: Option<LogStrategy>,
+    pub log_plain: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +49,8 @@ pub struct ModuleConfig {
     #[serde(flatten)]
     pub metadata: Metadata,
     pub shell: Option<String>,
+    pub log_strategy: Option<LogStrategy>,
+    pub log_plain: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

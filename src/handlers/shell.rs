@@ -42,7 +42,7 @@ pub fn handle_repl() -> Result<()> {
                  if let Some(startup) = &profile.startup {
                      println!("{}", "Initializing environment...".dimmed());
                      for cmd in startup {
-                         match pas::run_command_line(cmd, &mut ctx) {
+                         match pas::run_command_line(cmd, &mut ctx, None, None) {
                              Ok(_) => {},
                              Err(e) => eprintln!("{} Startup command failed: {}", "⚠️".yellow(), e),
                          }
@@ -73,7 +73,7 @@ pub fn handle_repl() -> Result<()> {
         }
         
         // Run
-        match pas::run_command_line(input, &mut ctx) {
+        match pas::run_command_line(input, &mut ctx, None, None) {
             Ok(_) => {}, // Exit code stored in ctx
             Err(e) => eprintln!("Error: {}", e),
         }
