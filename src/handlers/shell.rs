@@ -16,7 +16,42 @@ pub fn handle_repl() -> Result<()> {
         io::stdout().flush().ok();
     }).context("Error setting Ctrl-C handler")?;
 
-    let mut ctx = pas::context::ShellContext::new();
+    // Load Config (Fail Closed)
+    let current_dir = env::current_dir()?;
+    let config_res = load_config(&current_dir);
+    
+    let config = match config_res {
+        Ok(c) => Some(c),
+        Err(e) => {
+            if current_dir.join("p.toml").exists() {
+                eprintln!("{} Configuration Error: {}", "❌".red(), e);
+                bail!("Aborting shell session because p.toml exists but cannot be loaded. Fix the configuration to ensure security rules are applied.");
+            }
+            None
+        }
+    };
+
+    let capabilities = config.as_ref().and_then(|c| c.capability.clone());
+
+    let mut ctx = pas::context::ShellContext::new(capabilities);
+
+    // Startup Profile
+    if let Some(cfg) = &config {
+        if let Some(pas_cfg) = &cfg.pas {
+            if let Some(profile) = &pas_cfg.profile {
+                 if let Some(startup) = &profile.startup {
+                     println!("{}", "Initializing environment...".dimmed());
+                     for cmd in startup {
+                         match pas::run_command_line(cmd, &mut ctx) {
+                             Ok(_) => {},
+                             Err(e) => eprintln!("{} Startup command failed: {}", "⚠️".yellow(), e),
+                         }
+                     }
+                 }
+            }
+        }
+    }
+
     println!("Welcome to PaShell. Type 'exit' to quit.");
 
     loop {
@@ -56,7 +91,9 @@ pub fn handle_dir_jump(target_path: PathBuf) -> Result<()> {
     let config = load_config(&abs_path)?;
 
     // Detect shell preference or fallback to system default
-    let shell_cmd = detect_shell(config.project.as_ref().and_then(|p| p.shell.as_ref()));
+    let shell_pref = config.project.as_ref().and_then(|p| p.shell.as_ref())
+        .or(config.module.as_ref().and_then(|m| m.shell.as_ref()));
+    let shell_cmd = detect_shell(shell_pref);
 
     eprintln!("{} Entering environment at: {}", "⤵️".cyan(), abs_path.display());
     

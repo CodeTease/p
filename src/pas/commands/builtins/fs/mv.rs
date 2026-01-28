@@ -6,13 +6,14 @@ use anyhow::{Result, Context, bail};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use super::check_path_access;
 
 pub struct MvCommand;
 impl Executable for MvCommand {
     fn execute(
         &self,
         args: &[String],
-        _ctx: &mut ShellContext,
+        ctx: &mut ShellContext,
         _stdin: Option<Box<dyn std::io::Read + Send>>,
         _stdout: Option<Box<dyn std::io::Write + Send>>,
         stderr: Option<Box<dyn std::io::Write + Send>>,
@@ -28,6 +29,8 @@ impl Executable for MvCommand {
 
         let dest = args.last().unwrap();
         let dest_path = Path::new(dest);
+        check_path_access(dest_path, ctx)?;
+
         let dest_is_dir = dest_path.is_dir();
 
         let sources = &args[1..args.len() - 1];
@@ -37,6 +40,8 @@ impl Executable for MvCommand {
 
         for src in sources {
             let src_path = Path::new(src);
+            check_path_access(src_path, ctx)?;
+
             if !src_path.exists() {
                 bail!("Source not found: {}", src);
             }

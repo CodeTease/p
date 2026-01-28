@@ -21,6 +21,23 @@ impl Executable for SystemCommand {
             return Ok(0);
         }
         let program = &args[0];
+
+        // Security Check: allow_exec
+        if let Some(caps) = &ctx.capabilities {
+            if let Some(allowed) = &caps.allow_exec {
+                if !allowed.iter().any(|a| a == program) {
+                    use colored::*;
+                    let err_msg = format!("🚫 Security: Execution of '{}' is not allowed by configuration.", program);
+                    if let Some(mut e) = stderr {
+                        writeln!(e, "{}", err_msg.red())?;
+                    } else {
+                        eprintln!("{}", err_msg.red());
+                    }
+                    return Ok(126);
+                }
+            }
+        }
+
         let cmd_args = &args[1..];
 
         let mut cmd = Command::new(program);

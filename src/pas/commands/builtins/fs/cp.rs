@@ -6,6 +6,7 @@ use anyhow::{Result, Context, bail};
 use std::fs;
 use std::io::{Read, Write};
 use crate::pas::commands::builtins::common::{resolve_path, copy_dir_recursive};
+use super::check_path_access;
 
 pub struct CpCommand;
 impl Executable for CpCommand {
@@ -30,6 +31,8 @@ impl Executable for CpCommand {
         let sources = paths;
 
         let dest_path = resolve_path(ctx, &dest_str);
+        check_path_access(&dest_path, ctx)?;
+
         let dest_is_dir = dest_path.is_dir();
 
         if sources.len() > 1 && !dest_is_dir {
@@ -38,6 +41,8 @@ impl Executable for CpCommand {
 
         for src_str in sources {
             let src_path = resolve_path(ctx, src_str);
+            check_path_access(&src_path, ctx)?;
+
             if !src_path.exists() {
                 bail!("Source not found: {}", src_str);
             }

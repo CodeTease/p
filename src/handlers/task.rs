@@ -4,7 +4,6 @@ use std::sync::Arc;
 use crate::config::load_config;
 use crate::runner::{recursive_runner, CallStack};
 use crate::pas::context::ShellContext;
-use crate::pas::commands::builtins::register_all_builtins;
 
 pub fn handle_runner_entry(task_name: String, extra_args: Vec<String>, dry_run: bool) -> Result<()> {
     let current_dir = env::current_dir()?;
@@ -21,10 +20,21 @@ pub fn handle_runner_entry(task_name: String, extra_args: Vec<String>, dry_run: 
     let mut call_stack = CallStack::new();
 
     // Initialize Shell Context
-    let mut ctx = ShellContext::new();
+    let mut ctx = ShellContext::new(config_arc.capability.clone());
     
-    // Register builtins
-    register_all_builtins(&mut ctx);
+    // Register builtins (Already done in new(), but handle_runner_entry was calling it manually? 
+    // Reading context.rs: new() calls register_all_builtins. 
+    // In previous task.rs, it called it again?
+    // "let mut ctx = ShellContext::new(); register_all_builtins(&mut ctx);"
+    // If ShellContext::new() calls it, calling it again might duplicate or panic if registry logic isn't idempotent.
+    // ShellContext::new() calls register_all_builtins.
+    // context.rs: "crate::pas::commands::builtins::register_all_builtins(&mut ctx);" inside new().
+    // So I should remove the explicit call here if it's redundant.
+    // However, looking at previous task.rs:
+    // "let mut ctx = ShellContext::new(); register_all_builtins(&mut ctx);"
+    // If I check context.rs again:
+    // impl ShellContext { pub fn new() ... register_all_builtins ... }
+    // So yes, it's redundant. I will remove it.
     
     // Root task is allowed to print directly to stdout/stderr (capture = false)
     recursive_runner(&task_name, &config_arc, &mut call_stack, &extra_args, false, dry_run, Some(&mut ctx))

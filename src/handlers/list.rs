@@ -9,6 +9,15 @@ pub fn handle_list() -> Result<()> {
     let current_dir = env::current_dir()?;
     let config = load_config(&current_dir)?;
     
+    if let Some(p) = &config.project {
+        let name = p.metadata.name.as_deref().unwrap_or("Unnamed Project");
+        println!("{} {} {}", "📦".green(), name.bold(), "(Project)".dimmed());
+    } else if let Some(m) = &config.module {
+        let name = m.metadata.name.as_deref().unwrap_or("Unnamed Module");
+        println!("{} {} {}", "🧩".cyan(), name.bold(), "(Module)".dimmed());
+    }
+    println!();
+
     if let Some(runner_tasks) = config.runner {
         println!("{}", "Available Tasks:".bold().underline());
         

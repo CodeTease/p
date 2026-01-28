@@ -10,16 +10,51 @@ use crate::runner::task::RunnerTask;
 #[derive(Debug, Deserialize)]
 pub struct PavidiConfig {
     pub project: Option<ProjectConfig>,
+    pub module: Option<ModuleConfig>,
+    pub capability: Option<CapabilityConfig>,
+    pub pas: Option<PasConfig>,
     #[serde(default)] 
     pub env: HashMap<String, String>,
     pub runner: Option<HashMap<String, RunnerTask>>,
     pub clean: Option<CleanConfig>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct Metadata {
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub authors: Option<Vec<String>>,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ProjectConfig {
-    pub name: Option<String>,
+    #[serde(flatten)]
+    pub metadata: Metadata,
     pub shell: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ModuleConfig {
+    #[serde(flatten)]
+    pub metadata: Metadata,
+    pub shell: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CapabilityConfig {
+    pub allow_exec: Option<Vec<String>>,
+    pub allow_paths: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct PasConfig {
+    pub profile: Option<PasProfileConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct PasProfileConfig {
+    pub startup: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +71,26 @@ pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
     
     // 1. Parse p.toml (Base Layer)
     let mut config: PavidiConfig = toml::from_str(&content).context("Failed to parse p.toml")?;
+
+    // Resolve relative paths in capabilities
+    if let Some(caps) = &mut config.capability {
+        if let Some(paths) = &mut caps.allow_paths {
+            let resolved: Vec<String> = paths.iter().map(|p| {
+                let path = Path::new(p);
+                if path.is_absolute() {
+                    p.clone()
+                } else {
+                    dir.join(p).to_string_lossy().into_owned()
+                }
+            }).collect();
+            *paths = resolved;
+        }
+    }
+
+    // Validation: Exclusive Project vs Module
+    if config.project.is_some() && config.module.is_some() {
+        bail!("❌ Configuration Error: 'p.toml' cannot contain both [project] and [module] sections. Please use only one.");
+    }
 
     // 2. Load .env using dotenvy (Override Layer)
     // Determines filename: .env or .env.prod based on P_ENV

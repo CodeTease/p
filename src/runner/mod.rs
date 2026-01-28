@@ -149,7 +149,9 @@ pub fn recursive_runner(
         }
 
         // Optimize Core Logic - detect shell
-        let shell_cmd = detect_shell(config.project.as_ref().and_then(|p| p.shell.as_ref()));
+        let shell_pref = config.project.as_ref().and_then(|p| p.shell.as_ref())
+            .or(config.module.as_ref().and_then(|m| m.shell.as_ref()));
+        let shell_cmd = detect_shell(shell_pref);
         
         let timeout_duration = match timeout_sec {
             Some(0) => None,

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use crate::pas::commands::Executable;
+use crate::config::CapabilityConfig;
 
 #[derive(Clone)]
 pub struct ShellContext {
@@ -9,10 +10,11 @@ pub struct ShellContext {
     pub env: HashMap<String, String>,
     pub exit_code: i32,
     pub registry: Arc<HashMap<String, Box<dyn Executable + Send + Sync>>>,
+    pub capabilities: Option<CapabilityConfig>,
 }
 
 impl ShellContext {
-    pub fn new() -> Self {
+    pub fn new(capabilities: Option<CapabilityConfig>) -> Self {
         let env: HashMap<String, String> = std::env::vars().collect();
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut ctx = Self {
@@ -20,6 +22,7 @@ impl ShellContext {
             env,
             exit_code: 0,
             registry: Arc::new(HashMap::new()),
+            capabilities,
         };
         crate::pas::commands::builtins::register_all_builtins(&mut ctx);
         ctx
@@ -40,6 +43,7 @@ impl ShellContext {
             env: self.env.clone(),
             exit_code: self.exit_code,
             registry: self.registry.clone(),
+            capabilities: self.capabilities.clone(),
         }
     }
 }

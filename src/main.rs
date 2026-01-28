@@ -8,7 +8,7 @@ pub mod pas;
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Commands};
-use handlers::{shell, task, clean, jump, init, env, list};
+use handlers::{shell, task, clean, jump, init, env, list, info};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -23,5 +23,6 @@ fn main() -> Result<()> {
         Commands::J { path } => jump::handle_jump(path),
         Commands::I { shell } => init::handle_init(&shell),
         Commands::E => env::handle_env(),
+        Commands::Info => info::handle_info(),
     }
 }

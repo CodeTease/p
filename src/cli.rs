@@ -48,4 +48,7 @@ pub enum Commands {
 
     /// Inspect environment variables
     E,
+
+    /// Show project/module metadata
+    Info,
 }

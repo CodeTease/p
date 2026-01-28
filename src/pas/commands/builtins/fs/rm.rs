@@ -6,6 +6,7 @@ use anyhow::{Result, Context, bail};
 use std::fs;
 use std::io::{Read, Write};
 use crate::pas::commands::builtins::common::resolve_path;
+use super::check_path_access;
 
 pub struct RmCommand;
 impl Executable for RmCommand {
@@ -26,6 +27,7 @@ impl Executable for RmCommand {
 
         for path_str in paths {
             let p = resolve_path(ctx, path_str);
+            check_path_access(&p, ctx)?;
             if !p.exists() {
                 if !force {
                     bail!("File not found: {}", path_str);
