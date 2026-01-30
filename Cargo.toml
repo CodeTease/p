@@ -1,6 +1,6 @@
 [package]
 name = "pavidi"
-version = "0.1.0"
+version = "0.1.0+preview"
 edition = "2024" 
 
 [dependencies]
@@ -36,7 +36,17 @@ which = "8.0.0"
 wait-timeout = "0.2.1"
 
 # Hashing for Smart Cache
-blake3 = "1.5"
+blake3 = "1.8"
 
 # Regex for Env Var Interpolation
-regex = "1.10"
+regex = "1.12"
+
+# Parser Combinator
+nom = "7.1"
+
+# OS Pipes
+os_pipe = "1.2"
+
+# Signal Handling
+ctrlc = "3.5"
+chrono = { version = "0.4", features = ["serde"] }

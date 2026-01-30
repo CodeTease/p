@@ -12,12 +12,16 @@ pub struct Cli {
 pub enum Commands {
     /// Enter a project's shell environment (Sub-shell session)
     D { path: PathBuf },
+
+    /// Start the PaShell interactive REPL (Demo/Testing only)
+    #[command(visible_alias = "sh")]
+    Shell,
     
     /// List all available tasks
     #[command(visible_alias = "ls")]
     List,
 
-    /// Run a task defined in .p.toml
+    /// Run a task defined in p.toml
     R { 
         #[arg(default_value = "default")]
         task: String,
@@ -30,7 +34,7 @@ pub enum Commands {
         args: Vec<String>,
     },
     
-    /// Clean artifacts defined in .p.toml
+    /// Clean artifacts defined in p.toml
     C,
 
     /// Jump to a directory (Resolve path for shell hook)
@@ -44,4 +48,7 @@ pub enum Commands {
 
     /// Inspect environment variables
     E,
+
+    /// Show project/module metadata
+    Info,
 }
