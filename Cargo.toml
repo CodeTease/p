@@ -1,7 +1,12 @@
 [package]
 name = "pavidi"
-version = "0.1.0+preview"
+version = "0.1.0-preview.1"
+description = "A project manager."
+license = "Apache-2.0"
+readme = "README.md"
 edition = "2024" 
+authors = ["CodeTease"]
+repository = "https://github.com/CodeTease/p"
 
 [[bin]]
 name = "p"
@@ -54,3 +59,8 @@ os_pipe = "1.2"
 # Signal Handling
 ctrlc = "3.5"
 chrono = { version = "0.4", features = ["serde"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
