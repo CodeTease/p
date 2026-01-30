@@ -3,6 +3,10 @@ name = "pavidi"
 version = "0.1.0+preview"
 edition = "2024" 
 
+[[bin]]
+name = "p"
+path = "src/main.rs"
+
 [dependencies]
 # CLI Argument Parser (v4 still good)
 clap = { version = "4.5", features = ["derive"] }
