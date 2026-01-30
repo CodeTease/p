@@ -52,7 +52,8 @@ pub fn handle_repl() -> Result<()> {
         }
     }
 
-    println!("Welcome to PaShell. Type 'exit' to quit.");
+    println!("Welcome to PaShell. (Demo/Testing only - PaS only work once integrated with p.toml)");
+    println!("Type 'exit' to quit.");
 
     loop {
         print!("> ");

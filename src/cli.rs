@@ -13,7 +13,7 @@ pub enum Commands {
     /// Enter a project's shell environment (Sub-shell session)
     D { path: PathBuf },
 
-    /// Start the PaShell interactive REPL
+    /// Start the PaShell interactive REPL (Demo/Testing only)
     #[command(visible_alias = "sh")]
     Shell,
     
