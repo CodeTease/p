@@ -52,7 +52,8 @@ pub fn handle_repl() -> Result<()> {
         }
     }
 
-    println!("Welcome to PaShell. (Demo/Testing only - PaS only work once integrated with p.toml)");
+    println!("Welcome to PaShell! It's just PaShell, not Pavidi Shell!");
+    println!("Note: This REPL is just for testing PaS's functions. It's not the way you use PaS");
     println!("Type 'exit' to quit.");
 
     loop {

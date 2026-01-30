@@ -544,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "pavidi"
-version = "0.1.0"
+version = "0.1.0+preview"
 dependencies = [
  "anyhow",
  "blake3",
