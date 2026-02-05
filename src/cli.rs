@@ -10,13 +10,6 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Enter a project's shell environment (Sub-shell session)
-    D { path: PathBuf },
-
-    /// Start the PaShell interactive REPL (Demo/Testing only)
-    #[command(visible_alias = "sh")]
-    Shell,
-    
     /// List all available tasks
     #[command(visible_alias = "ls")]
     List,

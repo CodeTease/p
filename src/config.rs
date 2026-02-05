@@ -12,7 +12,6 @@ pub struct PavidiConfig {
     pub project: Option<ProjectConfig>,
     pub module: Option<ModuleConfig>,
     pub capability: Option<CapabilityConfig>,
-    pub pas: Option<PasConfig>,
     #[serde(default)] 
     pub env: HashMap<String, String>,
     pub runner: Option<HashMap<String, RunnerTask>>,
@@ -55,18 +54,7 @@ pub struct ModuleConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct CapabilityConfig {
-    pub allow_exec: Option<Vec<String>>,
     pub allow_paths: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct PasConfig {
-    pub profile: Option<PasProfileConfig>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct PasProfileConfig {
-    pub startup: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -8,13 +8,12 @@ Pavidi (or simply **P**) is a minimalist task runner and shell environment built
 ## Components
 
 - **Pavidi (Core):** The project-aware task runner that manages configuration, dependencies, and execution flow.
-- **PaS (PaShell):** A custom, cross-platform shell embedded within Pavidi. It ensures that commands run identically on Linux, macOS, and Windows without relying on system-specific shells like Bash or PowerShell.
 
 ## Installation
 
 To build and install from source:
 
-```bash
+```sh
 cargo install --path .
 ```
 
@@ -52,27 +51,22 @@ ignore_failure = false
 P uses short, mnemonic commands for efficiency.
 
 - **Run a task:**
-  ```bash
+  ```sh
   p r <task_name>
   # Example: p r build
   ```
 
 - **List available tasks:**
-  ```bash
+  ```sh
   p ls
   ```
 
-- **Start the PaShell REPL:**
-  ```bash
-  p sh
-  ```
-
 - **Show project info:**
-  ```bash
+  ```sh
   p info
   ```
 
 - **Clean artifacts:**
-  ```bash
+  ```sh
   p c
   ```
