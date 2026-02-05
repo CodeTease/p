@@ -62,11 +62,11 @@ pub fn recursive_runner(
     let task = runner_section.get(task_name).expect("Task check passed before");
 
     // Destructure task config
-    let (mut cmds, deps, parallel_deps, sources, outputs, windows, linux, macos, ignore_failure, timeout_sec) = match task {
-        RunnerTask::Single(cmd) => (vec![cmd.clone()], vec![], false, None, None, None, None, None, false, None),
-        RunnerTask::List(cmds) => (cmds.clone(), vec![], false, None, None, None, None, None, false, None),
-        RunnerTask::Full { cmds, deps, parallel, sources, outputs, windows, linux, macos, ignore_failure, timeout, .. } => 
-            (cmds.clone(), deps.clone(), *parallel, sources.clone(), outputs.clone(), windows.clone(), linux.clone(), macos.clone(), *ignore_failure, *timeout),
+    let (mut cmds, deps, parallel_deps, run_if, skip_if, sources, outputs, windows, linux, macos, ignore_failure, timeout_sec) = match task {
+        RunnerTask::Single(cmd) => (vec![cmd.clone()], vec![], false, None, None, None, None, None, None, None, false, None),
+        RunnerTask::List(cmds) => (cmds.clone(), vec![], false, None, None, None, None, None, None, None, false, None),
+        RunnerTask::Full { cmds, deps, parallel, run_if, skip_if, sources, outputs, windows, linux, macos, ignore_failure, timeout, .. } => 
+            (cmds.clone(), deps.clone(), *parallel, run_if.clone(), skip_if.clone(), sources.clone(), outputs.clone(), windows.clone(), linux.clone(), macos.clone(), *ignore_failure, *timeout),
     };
 
     // 1. Run Dependencies
@@ -106,7 +106,41 @@ pub fn recursive_runner(
         }
     }
 
-    // 2. Check Conditional Execution (Cache Check)
+    // 2. Logic Gates (Conditional Execution)
+    // Detect shell (needed for condition checks)
+    let shell_pref = config.project.as_ref().and_then(|p| p.shell.as_ref())
+        .or(config.module.as_ref().and_then(|m| m.shell.as_ref()));
+    let shell_cmd = detect_shell(shell_pref);
+
+    // skip_if
+    if let Some(raw_cmd) = skip_if {
+        let cmd = expand_command(&raw_cmd, extra_args, &config.env);
+        // Silent execution
+        let (code, _) = run_shell_command(&cmd, &config.env, CaptureMode::Buffer, task_name, &shell_cmd, None)?;
+        if code == 0 {
+            if !capture_output {
+                info!("{} Skipping task '{}' because 'skip_if' condition met.", "⏭️".yellow(), task_name.bold());
+            }
+            call_stack.pop(task_name);
+            return Ok(());
+        }
+    }
+
+    // run_if
+    if let Some(raw_cmd) = run_if {
+        let cmd = expand_command(&raw_cmd, extra_args, &config.env);
+        // Silent execution
+        let (code, _) = run_shell_command(&cmd, &config.env, CaptureMode::Buffer, task_name, &shell_cmd, None)?;
+        if code != 0 {
+            if !capture_output {
+                info!("{} Skipping task '{}' because 'run_if' condition failed.", "⏭️".yellow(), task_name.bold());
+            }
+            call_stack.pop(task_name);
+            return Ok(());
+        }
+    }
+
+    // 3. Check Conditional Execution (Cache Check)
     if let (Some(srcs), Some(outs)) = (&sources, &outputs) {
         if is_up_to_date(task_name, srcs, outs)? {
             if !capture_output {
@@ -117,7 +151,7 @@ pub fn recursive_runner(
         }
     }
 
-    // 3. Execute Main Commands
+    // 4. Execute Main Commands
 
     // OS Detection & Command Selection
     let os = std::env::consts::OS;
@@ -161,12 +195,9 @@ pub fn recursive_runner(
                 CaptureMode::Inherit
             }
         };
-
-        // Optimize Core Logic - detect shell
-        let shell_pref = config.project.as_ref().and_then(|p| p.shell.as_ref())
-            .or(config.module.as_ref().and_then(|m| m.shell.as_ref()));
-        let shell_cmd = detect_shell(shell_pref);
         
+        // Note: shell_cmd was already detected above, reusing it.
+
         let timeout_duration = match timeout_sec {
             Some(0) => None,
             Some(s) => Some(Duration::from_secs(s)),

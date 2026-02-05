@@ -6,6 +6,8 @@ use std::fs;
 use std::path::Path;
 use std::env;
 use crate::runner::task::RunnerTask;
+use regex::Regex;
+use crate::utils::{run_shell_command, CaptureMode, detect_shell};
 
 #[derive(Debug, Deserialize)]
 pub struct PavidiConfig {
@@ -111,6 +113,38 @@ pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
             config.env.insert(key, val);
         }
     }
+
+    // 3. Dynamic Env Var Resolution
+    let shell_pref = config.project.as_ref().and_then(|p| p.shell.as_ref())
+        .or(config.module.as_ref().and_then(|m| m.shell.as_ref()));
+    let shell = detect_shell(shell_pref);
+    
+    let re = Regex::new(r"^\$\((.*)\)$").unwrap();
+    let mut updates = HashMap::new();
+
+    for (k, v) in &config.env {
+        if let Some(caps) = re.captures(v) {
+            let cmd = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            if !cmd.trim().is_empty() {
+                // Execute command
+                let (code, output) = run_shell_command(
+                    cmd, 
+                    &config.env, 
+                    CaptureMode::Buffer,
+                    &format!("env:{}", k),
+                    &shell,
+                    None 
+                )?;
+                
+                if code != 0 {
+                    bail!("❌ Failed to resolve dynamic environment variable '{}': Command '{}' failed with exit code {}.", k, cmd, code);
+                }
+                
+                updates.insert(k.clone(), output.trim().to_string());
+            }
+        }
+    }
+    config.env.extend(updates);
 
     Ok(config)
 }
