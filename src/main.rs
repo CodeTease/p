@@ -8,7 +8,7 @@ mod logger;
 use anyhow::Result;
 use clap::Parser;
 use cli::Cli;
-use handlers::{task, env, list};
+use handlers::{task, env, list, info};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -16,6 +16,8 @@ fn main() -> Result<()> {
 
     if cli.list {
         list::handle_list()
+    } else if cli.info {
+        info::handle_info()
     } else if cli.env {
         env::handle_env()
     } else {

@@ -11,6 +11,10 @@ pub struct Cli {
     #[arg(short, long)]
     pub env: bool,
 
+    /// Show project/module metadata
+    #[arg(short = 'i', long = "info")]
+    pub info: bool,
+
     /// Run in dry-run mode (print commands without executing)
     #[arg(short = 'd', long = "dry-run")]
     pub dry_run: bool,

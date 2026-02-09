@@ -1,12 +1,18 @@
 [package]
 name = "pavidi"
 version = "0.1.0-preview.2"
-description = "A project manager."
+description = "A task runner."
 license = "Apache-2.0"
 readme = "README.md"
 edition = "2024" 
 authors = ["CodeTease"]
 repository = "https://github.com/CodeTease/p"
+
+[package.metadata.wix]
+upgrade-guid = "100DB47A-429D-428B-95DF-214CCFC773A9"
+path-guid = "E3F41D03-35F5-44CA-B2A6-7D8AD351941E"
+license = false
+eula = false
 
 [[bin]]
 name = "p"
