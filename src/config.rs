@@ -17,7 +17,6 @@ pub struct PavidiConfig {
     #[serde(default)] 
     pub env: HashMap<String, String>,
     pub runner: Option<HashMap<String, RunnerTask>>,
-    pub clean: Option<CleanConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -57,11 +56,6 @@ pub struct ModuleConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct CapabilityConfig {
     pub allow_paths: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CleanConfig {
-    pub targets: Vec<String>,
 }
 
 pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
