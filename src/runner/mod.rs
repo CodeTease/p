@@ -142,7 +142,7 @@ pub fn recursive_runner(
 
     // 3. Check Conditional Execution (Cache Check)
     if let (Some(srcs), Some(outs)) = (&sources, &outputs) {
-        if is_up_to_date(task_name, srcs, outs)? {
+        if is_up_to_date(task_name, srcs, outs, &config.env)? {
             if !capture_output {
                 info!("{} Task '{}' is up-to-date. Skipping.", "✨".green(), task_name.bold());
             }
@@ -272,7 +272,7 @@ pub fn recursive_runner(
 
         // Success: Update cache if sources AND outputs defined (otherwise we never check it anyway)
         if let (Some(srcs), Some(_)) = (&sources, &outputs) {
-             save_cache(task_name, srcs)?;
+             save_cache(task_name, srcs, &config.env)?;
         }
     }
     
