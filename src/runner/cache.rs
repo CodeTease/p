@@ -2,6 +2,7 @@ use anyhow::{Result, Context};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Read;
+use std::collections::HashMap;
 
 const CACHE_DIR: &str = ".p/cache";
 
@@ -30,7 +31,7 @@ fn get_cache_path(task_name: &str) -> PathBuf {
     Path::new(CACHE_DIR).join(format!("{}.hash", safe_name))
 }
 
-pub fn compute_hash(sources: &[String]) -> Result<String> {
+pub fn compute_hash(sources: &[String], env: &HashMap<String, String>) -> Result<String> {
     let mut hasher = blake3::Hasher::new();
     let mut file_paths = Vec::new();
 
@@ -63,10 +64,23 @@ pub fn compute_hash(sources: &[String]) -> Result<String> {
         }
     }
 
+    // Hash environment variables
+    let mut env_keys: Vec<_> = env.keys().collect();
+    env_keys.sort();
+
+    for key in env_keys {
+        if let Some(val) = env.get(key) {
+            hasher.update(key.as_bytes());
+            hasher.update(b"=");
+            hasher.update(val.as_bytes());
+            hasher.update(b"\n");
+        }
+    }
+
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String]) -> Result<bool> {
+pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String], env: &HashMap<String, String>) -> Result<bool> {
     ensure_cache_setup()?;
 
     // 1. Check if all outputs exist
@@ -94,7 +108,7 @@ pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String]) ->
     }
 
     // 2. Check Hash
-    let current_hash = compute_hash(sources)?;
+    let current_hash = compute_hash(sources, env)?;
     let cache_path = get_cache_path(task_name);
     
     if !cache_path.exists() {
@@ -106,9 +120,9 @@ pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String]) ->
     Ok(current_hash.trim() == cached_hash.trim())
 }
 
-pub fn save_cache(task_name: &str, sources: &[String]) -> Result<()> {
+pub fn save_cache(task_name: &str, sources: &[String], env: &HashMap<String, String>) -> Result<()> {
     ensure_cache_setup()?;
-    let current_hash = compute_hash(sources)?;
+    let current_hash = compute_hash(sources, env)?;
     let cache_path = get_cache_path(task_name);
     fs::write(cache_path, current_hash)?;
     Ok(())

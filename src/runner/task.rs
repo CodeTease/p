@@ -18,7 +18,10 @@ pub enum RunnerTask {
         // Description for listing
         #[serde(default)]
         description: Option<String>,
+        
         // Conditional Execution
+        run_if: Option<String>,
+        skip_if: Option<String>,
         sources: Option<Vec<String>>,
         outputs: Option<Vec<String>>,
 

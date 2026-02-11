@@ -1,54 +1,40 @@
-use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use clap::Parser;
 
 #[derive(Parser)]
 #[command(name = "p", version, about = "Pavidi: Minimalist Project Runner")]
 pub struct Cli {
-    #[command(subcommand)]
-    pub command: Commands,
-}
-
-#[derive(Subcommand)]
-pub enum Commands {
-    /// Enter a project's shell environment (Sub-shell session)
-    D { path: PathBuf },
-
-    /// Start the PaShell interactive REPL (Demo/Testing only)
-    #[command(visible_alias = "sh")]
-    Shell,
-    
     /// List all available tasks
-    #[command(visible_alias = "ls")]
-    List,
-
-    /// Run a task defined in p.toml
-    R { 
-        #[arg(default_value = "default")]
-        task: String,
-        
-        /// Run in dry-run mode (print commands without executing)
-        #[arg(short = 'd', long = "dry-run")]
-        dry_run: bool,
-
-        #[arg(last = true)]
-        args: Vec<String>,
-    },
-    
-    /// Clean artifacts defined in p.toml
-    C,
-
-    /// Jump to a directory (Resolve path for shell hook)
-    J { path: PathBuf },
-
-    /// Initialize shell hooks
-    I { 
-        #[arg(default_value = "zsh")]
-        shell: String 
-    },
+    #[arg(short, long)]
+    pub list: bool,
 
     /// Inspect environment variables
-    E,
+    #[arg(short, long)]
+    pub env: bool,
 
     /// Show project/module metadata
-    Info,
+    #[arg(short = 'i', long = "info")]
+    pub info: bool,
+
+    /// Run in dry-run mode (print commands without executing)
+    #[arg(short = 'd', long = "dry-run")]
+    pub dry_run: bool,
+
+    /// The task to run (defaults to "default")
+    #[arg(name = "TASK")]
+    pub task: Option<String>,
+
+    /// Arguments to pass to the task
+    #[arg(last = true)]
+    pub args: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli() {
+        Cli::command().debug_assert();
+    }
 }

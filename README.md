@@ -3,18 +3,17 @@
 > **PREVIEW STAGE**  
 > This software is currently in preview. Features and APIs are subject to change. Use with caution.
 
-Pavidi (or simply **P**) is a minimalist task runner and shell environment built in Rust. It aims to provide a consistent execution layer across different operating systems.
+Pavidi (or simply **P**) is a powerful task runner and shell environment built in Rust. It aims to provide a consistent execution layer across different operating systems.
 
 ## Components
 
 - **Pavidi (Core):** The project-aware task runner that manages configuration, dependencies, and execution flow.
-- **PaS (PaShell):** A custom, cross-platform shell embedded within Pavidi. It ensures that commands run identically on Linux, macOS, and Windows without relying on system-specific shells like Bash or PowerShell.
 
 ## Installation
 
 To build and install from source:
 
-```bash
+```sh
 cargo install --path .
 ```
 
@@ -52,27 +51,17 @@ ignore_failure = false
 P uses short, mnemonic commands for efficiency.
 
 - **Run a task:**
-  ```bash
-  p r <task_name>
-  # Example: p r build
+  ```sh
+  p <task_name>
+  # Example: p build
   ```
 
 - **List available tasks:**
-  ```bash
-  p ls
-  ```
-
-- **Start the PaShell REPL:**
-  ```bash
-  p sh
+  ```sh
+  p -l
   ```
 
 - **Show project info:**
-  ```bash
-  p info
-  ```
-
-- **Clean artifacts:**
-  ```bash
-  p c
+  ```sh
+  p -i
   ```

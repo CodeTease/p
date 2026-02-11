@@ -3,13 +3,16 @@
 use anyhow::{Result, Context, bail};
 use std::fs;
 use std::path::Path;
+use crate::runner::common::expand_globs;
 
 pub fn handle_rm(args: &[String]) -> Result<()> {
+    let args = expand_globs(args);
+    
     let mut recursive = false;
     let mut force = false;
     let mut paths = Vec::new();
 
-    for arg in args {
+    for arg in &args {
         if arg.starts_with('-') {
             if arg.contains('r') || arg.contains('R') { recursive = true; }
             if arg.contains('f') { force = true; }
