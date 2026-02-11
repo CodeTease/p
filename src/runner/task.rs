@@ -34,6 +34,12 @@ pub enum RunnerTask {
         #[serde(default)]
         ignore_failure: bool,
 
+        // Retry Logic
+        #[serde(default)]
+        retry: Option<u32>,
+        #[serde(default)]
+        retry_delay: Option<u64>,
+
         // Timeout (seconds)
         #[serde(default)]
         timeout: Option<u64>,

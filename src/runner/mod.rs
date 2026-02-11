@@ -17,6 +17,7 @@ use self::cache::{is_up_to_date, save_cache};
 use self::portable::run_portable_command;
 use log::{info, error};
 use std::time::Instant;
+use std::thread;
 
 pub struct CallStack {
     stack: HashSet<String>,
@@ -62,11 +63,11 @@ pub fn recursive_runner(
     let task = runner_section.get(task_name).expect("Task check passed before");
 
     // Destructure task config
-    let (mut cmds, deps, parallel_deps, run_if, skip_if, sources, outputs, windows, linux, macos, ignore_failure, timeout_sec) = match task {
-        RunnerTask::Single(cmd) => (vec![cmd.clone()], vec![], false, None, None, None, None, None, None, None, false, None),
-        RunnerTask::List(cmds) => (cmds.clone(), vec![], false, None, None, None, None, None, None, None, false, None),
-        RunnerTask::Full { cmds, deps, parallel, run_if, skip_if, sources, outputs, windows, linux, macos, ignore_failure, timeout, .. } => 
-            (cmds.clone(), deps.clone(), *parallel, run_if.clone(), skip_if.clone(), sources.clone(), outputs.clone(), windows.clone(), linux.clone(), macos.clone(), *ignore_failure, *timeout),
+    let (mut cmds, deps, parallel_deps, run_if, skip_if, sources, outputs, windows, linux, macos, ignore_failure, timeout_sec, retry, retry_delay) = match task {
+        RunnerTask::Single(cmd) => (vec![cmd.clone()], vec![], false, None, None, None, None, None, None, None, false, None, None, None),
+        RunnerTask::List(cmds) => (cmds.clone(), vec![], false, None, None, None, None, None, None, None, false, None, None, None),
+        RunnerTask::Full { cmds, deps, parallel, run_if, skip_if, sources, outputs, windows, linux, macos, ignore_failure, timeout, retry, retry_delay, .. } => 
+            (cmds.clone(), deps.clone(), *parallel, run_if.clone(), skip_if.clone(), sources.clone(), outputs.clone(), windows.clone(), linux.clone(), macos.clone(), *ignore_failure, *timeout, *retry, *retry_delay),
     };
 
     // 1. Run Dependencies
@@ -204,6 +205,9 @@ pub fn recursive_runner(
             None => Some(Duration::from_secs(1800)),
         };
 
+        let max_retries = retry.unwrap_or(0);
+        let retry_delay_duration = Duration::from_secs(retry_delay.unwrap_or(0));
+
         for cmd in &mut cmds {
             // Apply Argument Expansion ($1, $2...) and Env Var Interpolation
             let final_cmd = expand_command(cmd, extra_args, &config.env);
@@ -217,58 +221,87 @@ pub fn recursive_runner(
                 info!("{} Executing: {}", "::".blue(), final_cmd);
             }
 
-            let start_time = Instant::now();
-            let mut captured_output = String::new();
-            let mut exit_code = 0;
+            let mut attempt = 0;
+            
+            loop {
+                let start_time = Instant::now();
+                let mut captured_output = String::new();
+                let mut exit_code = 0;
+                let mut execution_failed = false;
+                let mut execution_error = String::new();
 
-            // Fallback to legacy portable/shell command
-            if final_cmd.trim_start().starts_with("p:") {
-                    if let Err(e) = run_portable_command(&final_cmd) {
-                    if ignore_failure {
-                        log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
-                        continue;
-                    }
-                    bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
-                    }
-            } else {
-                let result = run_shell_command(&final_cmd, &config.env, capture_mode, task_name, &shell_cmd, timeout_duration);
-                
-                match result {
-                    Ok((code, output)) => {
-                        captured_output = output;
-                        exit_code = code;
-                        if code != 0 {
-                            if log_enabled {
-                                let _ = write_log(task_name, &final_cmd, &captured_output, config, start_time.elapsed(), code, &config.env);
+                // Fallback to legacy portable/shell command
+                if final_cmd.trim_start().starts_with("p:") {
+                        if let Err(e) = run_portable_command(&final_cmd) {
+                            execution_failed = true;
+                            execution_error = e.to_string();
+                            exit_code = 1;
+                        }
+                } else {
+                    let result = run_shell_command(&final_cmd, &config.env, capture_mode, task_name, &shell_cmd, timeout_duration);
+                    
+                    match result {
+                        Ok((code, output)) => {
+                            captured_output = output;
+                            exit_code = code;
+                            if code != 0 {
+                                execution_failed = true;
                             }
-                            if ignore_failure {
-                                log::warn!("{} Command failed but ignored (code {})", "⚠️".yellow(), code);
-                            } else {
-                                bail!("❌ Task '{}' failed at: '{}' -> Exit code {}", task_name, final_cmd, code);
-                            }
+                        },
+                        Err(e) => {
+                            execution_failed = true;
+                            execution_error = e.to_string();
+                            exit_code = 1;
                         }
-                    },
-                    Err(e) => {
-                            // Execution error (timeout, etc)
-                        if log_enabled {
-                            let _ = write_log(task_name, &final_cmd, &format!("Execution Error: {}", e), config, start_time.elapsed(), 1, &config.env);
-                        }
-                        if ignore_failure {
-                            log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), e);
-                            continue;
-                        }
-                        bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, e);
                     }
                 }
-            }
-            
+                
+                if !execution_failed {
+                    // Success
+                    if log_enabled {
+                         if let Ok(Some(path)) = write_log(task_name, &final_cmd, &captured_output, config, start_time.elapsed(), exit_code, &config.env) {
+                             info!("{} Log saved: {}", "📝".dimmed(), path.display());
+                         }
+                    }
+                    break;
+                } else {
+                    // Failure
+                    if log_enabled {
+                        let log_content = if !execution_error.is_empty() {
+                            format!("Execution Error: {}", execution_error)
+                        } else {
+                            captured_output.clone()
+                        };
+                         let _ = write_log(task_name, &final_cmd, &log_content, config, start_time.elapsed(), exit_code, &config.env);
+                    }
 
-            if log_enabled {
-                 if let Ok(Some(path)) = write_log(task_name, &final_cmd, &captured_output, config, start_time.elapsed(), exit_code, &config.env) {
-                     info!("{} Log saved: {}", "📝".dimmed(), path.display());
-                 }
-            }
-        }
+                    if attempt < max_retries {
+                        attempt += 1;
+                        if !capture_output {
+                            info!("{} Command failed. Retrying ({}/{}) in {}s...", "🔄".yellow(), attempt, max_retries, retry_delay_duration.as_secs());
+                        }
+                        thread::sleep(retry_delay_duration);
+                        continue;
+                    } else {
+                        // All retries failed
+                        if ignore_failure {
+                             if !execution_error.is_empty() {
+                                log::warn!("{} Command failed but ignored: {}", "⚠️".yellow(), execution_error);
+                             } else {
+                                log::warn!("{} Command failed but ignored (code {})", "⚠️".yellow(), exit_code);
+                             }
+                             break;
+                        } else {
+                             if !execution_error.is_empty() {
+                                bail!("❌ Task '{}' failed at: '{}' -> {}", task_name, final_cmd, execution_error);
+                             } else {
+                                bail!("❌ Task '{}' failed at: '{}' -> Exit code {}", task_name, final_cmd, exit_code);
+                             }
+                        }
+                    }
+                }
+            } // end loop
+        } // end for cmd
 
         // Success: Update cache if sources AND outputs defined (otherwise we never check it anyway)
         if let (Some(srcs), Some(_)) = (&sources, &outputs) {
