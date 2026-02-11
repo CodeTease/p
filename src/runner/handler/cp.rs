@@ -4,12 +4,15 @@ use anyhow::{Result, Context, bail};
 use std::fs;
 use std::path::Path;
 use crate::runner::common::copy_dir_recursive;
+use crate::runner::common::expand_globs;
 
 pub fn handle_cp(args: &[String]) -> Result<()> {
+    let expanded_args = expand_globs(args);
+
     let mut recursive = false;
     let mut paths = Vec::new();
 
-    for arg in args {
+    for arg in &expanded_args {
         if arg == "-r" || arg == "-R" || arg == "--recursive" {
             recursive = true;
         } else {
@@ -32,7 +35,7 @@ pub fn handle_cp(args: &[String]) -> Result<()> {
     }
 
     for src in sources {
-        let src_path = Path::new(&src);
+        let src_path = Path::new(src); // No need for &src here as src is String (actually &String if from &expanded_args, wait)
         if !src_path.exists() {
             bail!("Source not found: {}", src);
         }
