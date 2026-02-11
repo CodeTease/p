@@ -7,6 +7,7 @@ readme = "README.md"
 edition = "2024" 
 authors = ["CodeTease"]
 repository = "https://github.com/CodeTease/p"
+homepage = "https://github.com/CodeTease/p/blob/main/README.md"
 
 [package.metadata.wix]
 upgrade-guid = "100DB47A-429D-428B-95DF-214CCFC773A9"
