@@ -43,5 +43,9 @@ pub enum RunnerTask {
         // Timeout (seconds)
         #[serde(default)]
         timeout: Option<u64>,
+
+        // Finally/Cleanup
+        #[serde(default)]
+        finally: Option<Vec<String>>,
     },
 }

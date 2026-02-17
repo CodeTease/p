@@ -113,6 +113,28 @@ pub fn write_log(
     file_content.push_str(&format!("End Time: {}\n", Local::now().to_rfc3339()));
     file_content.push_str("============================\n");
 
+    // Apply Custom Secret Masking
+    let secret_patterns = if let Some(p) = &config.project {
+        p.secret_patterns.as_ref()
+    } else if let Some(m) = &config.module {
+        m.secret_patterns.as_ref()
+    } else {
+        None
+    };
+
+    if let Some(patterns) = secret_patterns {
+        for pattern in patterns {
+            match Regex::new(pattern) {
+                Ok(re) => {
+                    file_content = re.replace_all(&file_content, "[REDACTED]").to_string();
+                },
+                Err(_) => {
+                    // Ignore invalid regex patterns as per requirements
+                }
+            }
+        }
+    }
+
     fs::write(&log_path, file_content).context("Failed to write log file")?;
 
     Ok(Some(log_path))
