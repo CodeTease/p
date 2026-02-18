@@ -6,10 +6,18 @@ Pavidi is designed to be easy to install on any platform. Choose the method that
 
 ### Option 1: Automated Installer (Recommended)
 
-You can use the automated installer script provided by `cargo-dist`. This works on Linux and macOS.
+You can use the automated installer script provided by `cargo-dist`.
+
+**Linux & macOS:**
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/CodeTease/p/releases/latest/download/pavidi-installer.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://github.com/CodeTease/p/releases/latest/download/pavidi-installer.ps1 | iex
 ```
 
 ### Option 2: Homebrew (macOS & Linux)
