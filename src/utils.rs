@@ -23,10 +23,17 @@ pub enum CaptureMode {
 /// Fallback for args: If no placeholders found, append args to the end.
 pub fn expand_command(cmd_template: &str, args: &[String], env_vars: &HashMap<String, String>) -> String {
     let mut expanded = cmd_template.to_string();
+    let mut replaced_args = false;
+
+    // 0. Argument Splat ($@)
+    // If the command contains $@, replace it with all arguments joined by space
+    if expanded.contains("$@") {
+        expanded = expanded.replace("$@", &args.join(" "));
+        replaced_args = true;
+    }
     
     // 1. Argument Substitution ($1, $2...)
     if !args.is_empty() {
-        let mut replaced_args = false;
         for (i, arg) in args.iter().enumerate() {
             let placeholder = format!("${}", i + 1);
             if expanded.contains(&placeholder) {
@@ -35,7 +42,7 @@ pub fn expand_command(cmd_template: &str, args: &[String], env_vars: &HashMap<St
             }
         }
 
-        // Backward Compatibility: Append if no placeholders used
+        // Backward Compatibility: Append if no placeholders used (neither $@ nor $N)
         if !replaced_args {
             expanded.push_str(" ");
             expanded.push_str(&args.join(" "));
@@ -221,5 +228,76 @@ pub fn detect_shell(config_shell: Option<&String>) -> String {
         }
     } else {
         "sh".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_expand_command_legacy_append() {
+        let cmd = "echo hello";
+        let args = vec!["world".to_string()];
+        let env = HashMap::new();
+        let expanded = expand_command(cmd, &args, &env);
+        assert_eq!(expanded, "echo hello world");
+    }
+
+    #[test]
+    fn test_expand_command_positional_args() {
+        let cmd = "echo $1 $2";
+        let args = vec!["hello".to_string(), "world".to_string()];
+        let env = HashMap::new();
+        let expanded = expand_command(cmd, &args, &env);
+        assert_eq!(expanded, "echo hello world");
+    }
+
+    #[test]
+    fn test_expand_command_splat_args() {
+        let cmd = "echo $@ end";
+        let args = vec!["hello".to_string(), "world".to_string()];
+        let env = HashMap::new();
+        let expanded = expand_command(cmd, &args, &env);
+        assert_eq!(expanded, "echo hello world end");
+    }
+
+    #[test]
+    fn test_expand_command_splat_args_no_args() {
+        let cmd = "echo $@ end";
+        let args = vec![];
+        let env = HashMap::new();
+        let expanded = expand_command(cmd, &args, &env);
+        assert_eq!(expanded, "echo  end"); // Note the double space, depends on join empty logic
+    }
+    
+    #[test]
+    fn test_expand_command_splat_overrides_append() {
+        let cmd = "echo $@";
+        let args = vec!["hello".to_string()];
+        let env = HashMap::new();
+        let expanded = expand_command(cmd, &args, &env);
+        assert_eq!(expanded, "echo hello"); 
+        // Should NOT be "echo hello hello"
+    }
+
+    #[test]
+    fn test_expand_command_env_vars() {
+        let cmd = "echo $MY_VAR";
+        let args = vec![];
+        let mut env = HashMap::new();
+        env.insert("MY_VAR".to_string(), "value".to_string());
+        let expanded = expand_command(cmd, &args, &env);
+        assert_eq!(expanded, "echo value");
+    }
+    
+    #[test]
+    fn test_expand_command_mixed_splat_and_env() {
+        let cmd = "echo $@ $MY_VAR";
+        let args = vec!["arg1".to_string()];
+        let mut env = HashMap::new();
+        env.insert("MY_VAR".to_string(), "value".to_string());
+        let expanded = expand_command(cmd, &args, &env);
+        assert_eq!(expanded, "echo arg1 value");
     }
 }
