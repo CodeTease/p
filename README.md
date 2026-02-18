@@ -2,6 +2,12 @@
 
 **Pavidi** (executable as `p`) is a modern, cross-platform task runner built in Rust. It aims to provide a consistent execution layer across different operating systems, handling dependencies, environment variables, and parallel execution with ease.
 
+**P stands for:**
+
+* **Pavidi**: The identity of a minimalist, powerful runner.
+* **Perfect**: Smart caching, parallel execution, and rock-solid task management.
+* **Portable**: Cross-platform by design with built-in commands that work everywhere.
+
 [**📚 Read the Full Documentation**](docs/index.md)
 
 ## 🚀 Key Features
