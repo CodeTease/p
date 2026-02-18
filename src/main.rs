@@ -22,6 +22,6 @@ fn main() -> Result<()> {
         env::handle_env(&cli)
     } else {
         let task_name = cli.task.unwrap_or_else(|| "default".to_string());
-        task::handle_runner_entry(task_name, cli.args, cli.dry_run)
+        task::handle_runner_entry(task_name, cli.args, cli.dry_run, cli.trace)
     }
 }

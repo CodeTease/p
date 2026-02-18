@@ -5,14 +5,20 @@ use crate::runner::handler::rm::handle_rm;
 use crate::runner::handler::ls::handle_ls;
 use crate::runner::handler::mv::handle_mv;
 use crate::runner::handler::cat::handle_cat;
+use colored::*;
 
-pub fn run_portable_command(cmd_str: &str) -> Result<()> {
+pub fn run_portable_command(cmd_str: &str, trace: bool) -> Result<()> {
     let args = shell_words::split(cmd_str).context("Failed to parse portable command arguments")?;
     if args.is_empty() {
         return Ok(());
     }
 
     let command = &args[0];
+
+    if trace {
+        eprintln!("{} [TRACE] Portable command: {}", "⚙️".cyan(), cmd_str);
+    }
+
     match command.as_str() {
         "p:rm" => handle_rm(&args[1..]),
         "p:mkdir" => handle_mkdir(&args[1..]),

@@ -61,6 +61,8 @@ fn execute_command_list(
     retry: u32,
     retry_delay: u64,
     ignore_failure: bool,
+    trace: bool,
+    depth: usize,
 ) -> Result<()> {
     if cmds.is_empty() {
         return Ok(());
@@ -95,8 +97,18 @@ fn execute_command_list(
     let retry_delay_duration = Duration::from_secs(retry_delay);
 
     for cmd in &mut cmds {
+        if trace {
+            let indent = "  ".repeat(depth);
+            eprintln!("{} {} [TRACE] Raw command: '{}'", indent, "⚙️".cyan(), cmd);
+        }
+
         // Apply Argument Expansion ($1, $2...) and Env Var Interpolation
         let final_cmd = expand_command(cmd, extra_args, &config.env);
+
+        if trace {
+            let indent = "  ".repeat(depth);
+            eprintln!("{} {} [TRACE] Expanded command: '{}'", indent, "⚙️".cyan(), final_cmd);
+        }
 
         if dry_run {
             println!("{} [DRY-RUN] Executing: {}", "::".yellow(), final_cmd);
@@ -118,7 +130,7 @@ fn execute_command_list(
 
             // Fallback to legacy portable/shell command
             if final_cmd.trim_start().starts_with("p:") {
-                    if let Err(e) = run_portable_command(&final_cmd) {
+                    if let Err(e) = run_portable_command(&final_cmd, trace) {
                         execution_failed = true;
                         execution_error = e.to_string();
                         exit_code = 1;
@@ -140,6 +152,11 @@ fn execute_command_list(
                         exit_code = 1;
                     }
                 }
+            }
+
+            if trace {
+                 let indent = "  ".repeat(depth);
+                 eprintln!("{} {} [TRACE] Command finished in {:.2?}. Exit code: {}", indent, "⏱️".cyan(), start_time.elapsed(), exit_code);
             }
             
             if !execution_failed {
@@ -197,8 +214,16 @@ pub fn recursive_runner(
     call_stack: &mut CallStack,
     extra_args: &[String],
     capture_output: bool, // true = buffer output (for parallel), false = inherit
-    dry_run: bool
+    dry_run: bool,
+    trace: bool,
+    depth: usize,
 ) -> Result<()> {
+    if trace {
+        let indent = "  ".repeat(depth);
+        eprintln!("{} [TRACE] Entering task: {}", indent, task_name.bold());
+    }
+    let task_start = Instant::now();
+
     call_stack.push(task_name)?;
 
     let runner_section = config.runner.as_ref().unwrap();
@@ -229,7 +254,8 @@ pub fn recursive_runner(
                     let mut local_stack = stack_snapshot.clone_stack();
  
                     // Parallel deps MUST capture output to prevent mixed logs
-                    recursive_runner(dep_name, config, &mut local_stack, &[], true, dry_run)
+                    // Note: Depth increments for parallel tasks too, but trace output might be interleaved
+                    recursive_runner(dep_name, config, &mut local_stack, &[], true, dry_run, trace, depth + 1)
                         .map_err(|e| format!("Dep '{}' failed: {}", dep_name, e))
                 })
                 .filter_map(|res| res.err())
@@ -244,7 +270,7 @@ pub fn recursive_runner(
                 info!("{} Running dependencies sequentially...", "🔗".blue());
             }
             for dep in deps {
-                recursive_runner(&dep, config, call_stack, &[], capture_output, dry_run)?;
+                recursive_runner(&dep, config, call_stack, &[], capture_output, dry_run, trace, depth + 1)?;
             }
         }
     }
@@ -260,6 +286,11 @@ pub fn recursive_runner(
         let cmd = expand_command(&raw_cmd, extra_args, &config.env);
         // Silent execution
         let (code, _) = run_shell_command(&cmd, &config.env, CaptureMode::Buffer, task_name, &shell_cmd, None)?;
+        
+        if trace {
+             eprintln!("{} [TRACE] skip_if check: '{}' -> exit code {}", "  ".repeat(depth), cmd, code);
+        }
+
         if code == 0 {
             if !capture_output {
                 info!("{} Skipping task '{}' because 'skip_if' condition met.", "⏭️".yellow(), task_name.bold());
@@ -274,6 +305,11 @@ pub fn recursive_runner(
         let cmd = expand_command(&raw_cmd, extra_args, &config.env);
         // Silent execution
         let (code, _) = run_shell_command(&cmd, &config.env, CaptureMode::Buffer, task_name, &shell_cmd, None)?;
+
+        if trace {
+             eprintln!("{} [TRACE] run_if check: '{}' -> exit code {}", "  ".repeat(depth), cmd, code);
+        }
+
         if code != 0 {
             if !capture_output {
                 info!("{} Skipping task '{}' because 'run_if' condition failed.", "⏭️".yellow(), task_name.bold());
@@ -285,7 +321,7 @@ pub fn recursive_runner(
 
     // 3. Check Conditional Execution (Cache Check)
     if let (Some(srcs), Some(outs)) = (&sources, &outputs) {
-        if is_up_to_date(task_name, srcs, outs, &config.env)? {
+        if is_up_to_date(task_name, srcs, outs, &config.env, trace)? {
             if !capture_output {
                 info!("{} Task '{}' is up-to-date. Skipping.", "✨".green(), task_name.bold());
             }
@@ -304,6 +340,11 @@ pub fn recursive_runner(
         "macos" => macos.as_ref(),
         _ => None,
     };
+
+    if trace {
+        let selected = if os_cmds.is_some() { os } else { "default" };
+        eprintln!("{} [TRACE] OS Selection: System is '{}'. Selected commands from: '{}'", "  ".repeat(depth), os, selected);
+    }
 
     if let Some(c) = os_cmds {
         cmds = c.clone();
@@ -329,7 +370,9 @@ pub fn recursive_runner(
         timeout_sec,
         retry.unwrap_or(0),
         retry_delay.unwrap_or(0),
-        ignore_failure
+        ignore_failure,
+        trace,
+        depth
     );
 
     // 5. Execute Finally Commands
@@ -349,7 +392,9 @@ pub fn recursive_runner(
             timeout_sec,
             0, 
             0,
-            false
+            false,
+            trace,
+            depth
         );
     }
     
@@ -362,6 +407,9 @@ pub fn recursive_runner(
             // Success: Update cache if sources AND outputs defined
             if let (Some(srcs), Some(_)) = (&sources, &outputs) {
                  save_cache(task_name, srcs, &config.env)?;
+            }
+            if trace {
+                 eprintln!("{} [TRACE] Exiting task: {} (Duration: {:.2?})", "  ".repeat(depth), task_name.bold(), task_start.elapsed());
             }
             Ok(())
         }

@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::collections::HashMap;
+use colored::*;
 
 const CACHE_DIR: &str = ".p/cache";
 
@@ -80,7 +81,7 @@ pub fn compute_hash(sources: &[String], env: &HashMap<String, String>) -> Result
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String], env: &HashMap<String, String>) -> Result<bool> {
+pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String], env: &HashMap<String, String>, trace: bool) -> Result<bool> {
     ensure_cache_setup()?;
 
     // 1. Check if all outputs exist
@@ -103,6 +104,9 @@ pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String], en
         // If a pattern in 'outputs' yields NO files, we consider outputs missing.
         // e.g. outputs=["dist/bundle.js"]. If file missing, glob is empty. found_any=false.
         if !found_any {
+             if trace {
+                 eprintln!("{} [TRACE] Cache miss for '{}': Output pattern '{}' matched no files.", "🔍".blue(), task_name, pattern);
+             }
              return Ok(false);
         }
     }
@@ -112,12 +116,25 @@ pub fn is_up_to_date(task_name: &str, sources: &[String], outputs: &[String], en
     let cache_path = get_cache_path(task_name);
     
     if !cache_path.exists() {
+        if trace {
+            eprintln!("{} [TRACE] Cache miss for '{}': No previous cache found.", "🔍".blue(), task_name);
+        }
         return Ok(false);
     }
 
     let cached_hash = fs::read_to_string(cache_path)?;
     
-    Ok(current_hash.trim() == cached_hash.trim())
+    if current_hash.trim() != cached_hash.trim() {
+        if trace {
+            eprintln!("{} [TRACE] Cache miss for '{}': Hash mismatch (sources or env changed).", "🔍".blue(), task_name);
+            // Optional: Print hash diff if really needed, but mismatch reason is usually enough
+            eprintln!("       Current: {}", current_hash.trim());
+            eprintln!("       Cached:  {}", cached_hash.trim());
+        }
+        return Ok(false);
+    }
+    
+    Ok(true)
 }
 
 pub fn save_cache(task_name: &str, sources: &[String], env: &HashMap<String, String>) -> Result<()> {
