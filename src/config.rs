@@ -17,6 +17,13 @@ pub struct PavidiConfig {
     #[serde(default)] 
     pub env: HashMap<String, String>,
     pub runner: Option<HashMap<String, RunnerTask>>,
+
+    #[serde(skip)]
+    pub env_provenance: HashMap<String, Vec<(String, String)>>,
+    #[serde(skip)]
+    pub extensions_applied: Vec<(String, Metadata)>,
+    #[serde(skip)]
+    pub original_metadata: Option<Metadata>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -124,6 +131,21 @@ pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
     // 1. Parse p.toml (Base Layer)
     let mut config: PavidiConfig = toml::from_str(&content).context("Failed to parse p.toml")?;
 
+    // Initialize provenance tracking
+    config.env_provenance = HashMap::new();
+    for (k, v) in &config.env {
+        config.env_provenance.insert(k.clone(), vec![("p.toml".to_string(), v.clone())]);
+    }
+
+    // Capture original metadata
+    if let Some(p) = &config.project {
+        config.original_metadata = Some(p.metadata.clone());
+    } else if let Some(m) = &config.module {
+        config.original_metadata = Some(m.metadata.clone());
+    }
+    
+    config.extensions_applied = Vec::new();
+
     // Resolve relative paths in capabilities
     if let Some(caps) = &mut config.capability {
         if let Some(paths) = &mut caps.allow_paths {
@@ -154,6 +176,23 @@ pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
         eprintln!("{} Loading extension config: {}", "➕".blue(), ext_path.file_name().unwrap().to_string_lossy());
         let ext_content = fs::read_to_string(&ext_path).context("Failed to read extension config")?;
         let mut ext_config: PavidiConfig = toml::from_str(&ext_content).context("Failed to parse extension config")?;
+
+        let ext_name = ext_path.file_name().unwrap().to_string_lossy().to_string();
+
+        // Capture extension metadata
+        let meta = if let Some(p) = &ext_config.project {
+            p.metadata.clone()
+        } else if let Some(m) = &ext_config.module {
+            m.metadata.clone()
+        } else {
+            Metadata { name: None, version: None, authors: None, description: None }
+        };
+        config.extensions_applied.push((ext_name.clone(), meta));
+
+        // Update provenance for vars in extension
+        for (k, v) in &ext_config.env {
+            config.env_provenance.entry(k.clone()).or_default().push((ext_name.clone(), v.clone()));
+        }
 
         // Resolve relative paths in extension capability BEFORE merging
         if let Some(caps) = &mut ext_config.capability {
@@ -194,6 +233,10 @@ pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
         // This keeps the separation clean until execution.
         for item in dotenvy::from_path_iter(&env_path)? {
             let (key, val) = item?;
+            
+            // Track provenance
+            config.env_provenance.entry(key.clone()).or_default().push((env_filename.clone(), val.clone()));
+            
             // .env overrides p.toml
             config.env.insert(key, val);
         }
@@ -229,6 +272,12 @@ pub fn load_config(dir: &Path) -> Result<PavidiConfig> {
             }
         }
     }
+    
+    // Update provenance for dynamic vars
+    for (k, v) in &updates {
+        config.env_provenance.entry(k.clone()).or_default().push(("dynamic".to_string(), v.clone()));
+    }
+    
     config.env.extend(updates);
 
     Ok(config)

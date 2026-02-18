@@ -11,6 +11,10 @@ pub struct Cli {
     #[arg(short, long)]
     pub env: bool,
 
+    /// Show detailed trace of variable overrides
+    #[arg(long)]
+    pub trace: bool,
+
     /// Show project/module metadata
     #[arg(short = 'i', long = "info")]
     pub info: bool,
